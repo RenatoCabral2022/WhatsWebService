@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package whats.v1;
+
+option go_package = "github.com/RenatoCabral2022/WHATS-SERVICE/gen/go/whats/v1;whatsv1";
+
+// AudioFormat describes the encoding of an audio buffer.
+message AudioFormat {
+  // Sample rate in Hz. Canonical: 16000.
+  int32 sample_rate = 1;
+  // Number of channels. Canonical: 1 (mono).
+  int32 channels = 2;
+  // Encoding identifier.
+  AudioEncoding encoding = 3;
+}
+
+enum AudioEncoding {
+  AUDIO_ENCODING_UNSPECIFIED = 0;
+  // Signed 16-bit little-endian PCM.
+  AUDIO_ENCODING_PCM_S16LE = 1;
+}
+
+// AudioChunk is a chunk of raw audio bytes with metadata.
+message AudioChunk {
+  // Raw audio bytes in the format specified by the associated AudioFormat.
+  bytes data = 1;
+  // Sequence number for ordering (0-indexed).
+  int32 sequence = 2;
+  // Duration of this chunk in milliseconds.
+  int32 duration_ms = 3;
+  // True if this is the last chunk in the stream.
+  bool is_final = 4;
+}
+
+// LatencyMetrics tracks per-stage timing for an action.
+message LatencyMetrics {
+  string session_id = 1;
+  string action_id = 2;
+  // Microseconds from command receipt to ring buffer snapshot completion.
+  int64 snapshot_us = 3;
+  // Microseconds for ASR inference.
+  int64 asr_us = 4;
+  // Microseconds for translation (0 if not used).
+  int64 translate_us = 5;
+  // Microseconds to first TTS audio chunk.
+  int64 tts_first_chunk_us = 6;
+  // Total end-to-end microseconds.
+  int64 total_us = 7;
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/command.enunciate.schema.json",
+  "title": "CommandEnunciate",
+  "description": "Client command to snapshot and enunciate the last N seconds of audio.",
+  "type": "object",
+  "required": ["type", "sessionId", "actionId", "timestamp", "payload"],
+  "properties": {
+    "type": {
+      "const": "command.enunciate"
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "integer"
+    },
+    "payload": {
+      "type": "object",
+      "required": ["lookbackSeconds"],
+      "properties": {
+        "lookbackSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30,
+          "description": "Number of seconds to rewind and transcribe."
+        },
+        "targetLanguage": {
+          "type": ["string", "null"],
+          "description": "BCP-47 language code for translation. Null or omitted means no translation."
+        },
+        "ttsOptions": {
+          "type": "object",
+          "properties": {
+            "voice": {
+              "type": "string",
+              "default": "default"
+            },
+            "speed": {
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 2.0,
+              "default": 1.0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

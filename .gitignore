@@ -1,0 +1,29 @@
+# Go
+go.work
+go.work.sum
+bin/
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Generated code
+**/gen/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local

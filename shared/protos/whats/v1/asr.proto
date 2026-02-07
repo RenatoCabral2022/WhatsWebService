@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package whats.v1;
+
+option go_package = "github.com/RenatoCabral2022/WHATS-SERVICE/gen/go/whats/v1;whatsv1";
+
+import "whats/v1/common.proto";
+
+// AsrService provides speech-to-text transcription.
+service AsrService {
+  // Transcribe converts a PCM audio buffer to text.
+  // Unary RPC: send full audio snapshot, get transcription back.
+  rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
+}
+
+// TranscribeRequest sends audio for transcription.
+message TranscribeRequest {
+  // The raw PCM audio to transcribe.
+  bytes audio = 1;
+  // Audio format metadata.
+  AudioFormat format = 2;
+  // Session identifier for correlation.
+  string session_id = 3;
+  // Action identifier for correlation.
+  string action_id = 4;
+  // Optional language hint (BCP-47, e.g., "en", "pt-BR").
+  // If empty, the language is auto-detected.
+  string language_hint = 5;
+}
+
+// TranscribeResponse contains the transcription result.
+message TranscribeResponse {
+  // The full transcribed text.
+  string text = 1;
+  // Detected or confirmed language (BCP-47).
+  string language = 2;
+  // Per-segment details.
+  repeated Segment segments = 3;
+  // Inference duration in milliseconds.
+  int32 inference_duration_ms = 4;
+}
+
+// Segment is a time-aligned piece of the transcription.
+message Segment {
+  // Transcribed text for this segment.
+  string text = 1;
+  // Start time in seconds relative to audio start.
+  float start_time = 2;
+  // End time in seconds relative to audio start.
+  float end_time = 3;
+  // Confidence score [0.0, 1.0].
+  float confidence = 4;
+}

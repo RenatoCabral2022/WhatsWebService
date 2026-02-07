@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/event.tts.started.schema.json",
+  "title": "EventTtsStarted",
+  "description": "Server event: TTS synthesis has begun, audio will follow on the media track.",
+  "type": "object",
+  "required": ["type", "sessionId", "actionId", "timestamp", "payload"],
+  "properties": {
+    "type": { "const": "tts.started" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "actionId": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "integer" },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "voice": {
+          "type": "string",
+          "description": "Voice used for synthesis."
+        },
+        "estimatedDurationMs": {
+          "type": "integer",
+          "description": "Estimated duration of synthesized audio in milliseconds."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

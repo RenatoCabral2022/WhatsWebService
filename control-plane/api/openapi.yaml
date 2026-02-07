@@ -1,0 +1,128 @@
+openapi: "3.1.0"
+info:
+  title: Whats Control Plane API
+  version: "0.1.0"
+  description: |
+    REST API for session lifecycle and WebRTC signaling.
+    No audio data flows through this API.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /v1/sessions:
+    post:
+      summary: Create a new audio session
+      operationId: createSession
+      tags: [sessions]
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateSessionResponse"
+        "429":
+          description: Rate limited
+        "500":
+          description: Internal error
+
+  /v1/sessions/{sessionId}/webrtc/answer:
+    post:
+      summary: Submit WebRTC SDP answer
+      operationId: postWebRTCAnswer
+      tags: [sessions, webrtc]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebRTCAnswerRequest"
+      responses:
+        "204":
+          description: Answer accepted
+        "404":
+          description: Session not found
+        "400":
+          description: Invalid SDP
+
+  /v1/sessions/{sessionId}:
+    delete:
+      summary: Tear down a session
+      operationId: deleteSession
+      tags: [sessions]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Session deleted
+        "404":
+          description: Session not found
+
+  /healthz:
+    get:
+      summary: Health check
+      operationId: healthz
+      tags: [health]
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+
+components:
+  schemas:
+    CreateSessionResponse:
+      type: object
+      required: [sessionId, sdpOffer, iceServers]
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        sdpOffer:
+          type: string
+          description: SDP offer from the server
+        iceServers:
+          type: array
+          items:
+            $ref: "#/components/schemas/IceServer"
+
+    IceServer:
+      type: object
+      required: [urls]
+      properties:
+        urls:
+          type: array
+          items:
+            type: string
+        username:
+          type: string
+        credential:
+          type: string
+
+    WebRTCAnswerRequest:
+      type: object
+      required: [sdpAnswer]
+      properties:
+        sdpAnswer:
+          type: string
+          description: SDP answer from the client

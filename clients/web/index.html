@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whats - Audio DVR</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>Whats - Real-Time Audio DVR</h1>
+        <div id="status">Disconnected</div>
+        <div id="controls">
+            <button id="btn-connect" onclick="connect()">Connect</button>
+            <button id="btn-enunciate" onclick="enunciate()" disabled>
+                Enunciate Last 5s
+            </button>
+            <button id="btn-disconnect" onclick="disconnect()" disabled>
+                Disconnect
+            </button>
+        </div>
+        <div id="transcript"></div>
+        <div id="metrics"></div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

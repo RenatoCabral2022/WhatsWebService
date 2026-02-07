@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/command.update.schema.json",
+  "title": "CommandUpdate",
+  "description": "Client command to update session or action parameters mid-stream.",
+  "type": "object",
+  "required": ["type", "sessionId", "timestamp", "payload"],
+  "properties": {
+    "type": {
+      "const": "command.update"
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "actionId": {
+      "type": ["string", "null"],
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "integer"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "targetLanguage": {
+          "type": ["string", "null"]
+        },
+        "ttsOptions": {
+          "type": "object",
+          "properties": {
+            "voice": { "type": "string" },
+            "speed": { "type": "number", "minimum": 0.5, "maximum": 2.0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

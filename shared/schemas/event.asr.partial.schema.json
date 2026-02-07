@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/event.asr.partial.schema.json",
+  "title": "EventAsrPartial",
+  "description": "Server event: partial ASR transcription result.",
+  "type": "object",
+  "required": ["type", "sessionId", "actionId", "timestamp", "payload"],
+  "properties": {
+    "type": { "const": "asr.partial" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "actionId": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "integer" },
+    "payload": {
+      "type": "object",
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Partial transcription so far."
+        },
+        "language": {
+          "type": "string",
+          "description": "Detected language (BCP-47)."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

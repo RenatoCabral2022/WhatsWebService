@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/event.metrics.latency.schema.json",
+  "title": "EventMetricsLatency",
+  "description": "Server event: per-action latency breakdown.",
+  "type": "object",
+  "required": ["type", "sessionId", "actionId", "timestamp", "payload"],
+  "properties": {
+    "type": { "const": "metrics.latency" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "actionId": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "integer" },
+    "payload": {
+      "type": "object",
+      "required": ["totalMs"],
+      "properties": {
+        "snapshotMs": {
+          "type": "number",
+          "description": "Ring buffer snapshot duration."
+        },
+        "asrMs": {
+          "type": "number",
+          "description": "ASR inference duration."
+        },
+        "translateMs": {
+          "type": "number",
+          "description": "Translation duration (0 if not used)."
+        },
+        "ttsFirstChunkMs": {
+          "type": "number",
+          "description": "Time to first TTS audio chunk."
+        },
+        "totalMs": {
+          "type": "number",
+          "description": "Total end-to-end latency."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

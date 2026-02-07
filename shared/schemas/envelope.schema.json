@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/envelope.schema.json",
+  "title": "DataChannelEnvelope",
+  "description": "Top-level wrapper for all WebRTC data channel messages.",
+  "type": "object",
+  "required": ["type", "sessionId", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Message type identifier (e.g., 'command.enunciate', 'asr.final')."
+    },
+    "sessionId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Session this message belongs to."
+    },
+    "actionId": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Action identifier. Required for commands and action-scoped events."
+    },
+    "timestamp": {
+      "type": "integer",
+      "description": "Unix timestamp in milliseconds when the message was created."
+    },
+    "payload": {
+      "description": "Type-specific payload object."
+    }
+  },
+  "additionalProperties": false
+}

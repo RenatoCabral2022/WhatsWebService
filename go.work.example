@@ -1,0 +1,8 @@
+// Copy this file to go.work for local multi-module development.
+// DO NOT commit go.work to version control.
+go 1.22
+
+use (
+	./control-plane
+	./webrtc-gateway
+)

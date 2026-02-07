@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/event.asr.final.schema.json",
+  "title": "EventAsrFinal",
+  "description": "Server event: final ASR transcription result.",
+  "type": "object",
+  "required": ["type", "sessionId", "actionId", "timestamp", "payload"],
+  "properties": {
+    "type": { "const": "asr.final" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "actionId": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "integer" },
+    "payload": {
+      "type": "object",
+      "required": ["text", "language"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Final transcription text."
+        },
+        "language": {
+          "type": "string",
+          "description": "Detected/confirmed language (BCP-47)."
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": { "type": "string" },
+              "startTime": { "type": "number" },
+              "endTime": { "type": "number" },
+              "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "required": ["text", "startTime", "endTime"]
+          }
+        },
+        "inferenceMs": {
+          "type": "integer",
+          "description": "ASR inference duration in milliseconds."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

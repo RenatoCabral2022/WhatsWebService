@@ -1,0 +1,65 @@
+services:
+  control-plane:
+    build:
+      context: ./control-plane
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - GATEWAY_ADDR=webrtc-gateway:9090
+    depends_on:
+      - webrtc-gateway
+    restart: unless-stopped
+
+  webrtc-gateway:
+    build:
+      context: ./webrtc-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "9090:9090"
+    environment:
+      - LISTEN_ADDR=:9090
+      - ASR_ADDR=asr:50051
+      - TTS_ADDR=tts:50052
+    depends_on:
+      - asr
+      - tts
+    restart: unless-stopped
+
+  asr:
+    build:
+      context: ./inference/asr
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - GRPC_PORT=50051
+      - WHISPER_MODEL_SIZE=base
+      - WHISPER_DEVICE=cpu
+      - WHISPER_COMPUTE_TYPE=int8
+    restart: unless-stopped
+    # For GPU support, uncomment:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  tts:
+    build:
+      context: ./inference/tts
+      dockerfile: Dockerfile
+    ports:
+      - "50052:50052"
+    environment:
+      - GRPC_PORT=50052
+      - TTS_MODEL=default
+      - TTS_DEVICE=cpu
+    restart: unless-stopped
+
+networks:
+  default:
+    name: whats-network

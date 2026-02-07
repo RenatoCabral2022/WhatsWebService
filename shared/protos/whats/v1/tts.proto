@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package whats.v1;
+
+option go_package = "github.com/RenatoCabral2022/WHATS-SERVICE/gen/go/whats/v1;whatsv1";
+
+import "whats/v1/common.proto";
+
+// TtsService provides text-to-speech synthesis.
+service TtsService {
+  // Synthesize converts text to speech, streaming audio chunks back.
+  // Server-streaming: one request, multiple AudioChunk responses.
+  rpc Synthesize(SynthesizeRequest) returns (stream SynthesizeResponse);
+}
+
+// SynthesizeRequest specifies the text and voice parameters.
+message SynthesizeRequest {
+  // The text to synthesize.
+  string text = 1;
+  // Session identifier for correlation.
+  string session_id = 2;
+  // Action identifier for correlation.
+  string action_id = 3;
+  // Voice identifier (engine-specific).
+  string voice = 4;
+  // Speech speed multiplier (1.0 = normal).
+  float speed = 5;
+  // Desired output format. Must be PCM s16le 16kHz mono.
+  AudioFormat output_format = 6;
+  // Target language for synthesis (BCP-47).
+  string language = 7;
+}
+
+// SynthesizeResponse wraps a single audio chunk in the stream.
+message SynthesizeResponse {
+  // A chunk of synthesized audio.
+  AudioChunk chunk = 1;
+}
