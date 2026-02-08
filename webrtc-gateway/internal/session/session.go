@@ -11,9 +11,9 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media"
 	"go.uber.org/zap"
 
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/audio"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/datachannel"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/ringbuffer"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/audio"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/datachannel"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/ringbuffer"
 )
 
 // Session holds all per-connection state.

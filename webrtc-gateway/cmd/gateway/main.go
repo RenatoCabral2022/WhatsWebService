@@ -10,8 +10,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/config"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/gateway"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/config"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/gateway"
 )
 
 func main() {

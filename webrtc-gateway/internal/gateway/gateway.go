@@ -12,11 +12,11 @@ import (
 	"github.com/pion/webrtc/v4"
 	"go.uber.org/zap"
 
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/audio"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/config"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/datachannel"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/inference"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway/internal/session"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/audio"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/config"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/datachannel"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/inference"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/session"
 )
 
 const iceGatherTimeout = 10 * time.Second

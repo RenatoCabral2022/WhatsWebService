@@ -1,9 +1,9 @@
-module github.com/RenatoCabral2022/WHATS-SERVICE/webrtc-gateway
+module github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway
 
 go 1.22
 
 require (
-	github.com/RenatoCabral2022/WHATS-SERVICE/gen/go v0.0.0
+	github.com/RenatoCabral2022/WhatsWebService/gen/go v0.0.0
 	github.com/hraban/opus v0.0.0-20251117090126-c76ea7e21bf3
 	github.com/pion/interceptor v0.1.37
 	github.com/pion/webrtc/v4 v4.0.10
@@ -20,4 +20,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 )
 
-replace github.com/RenatoCabral2022/WHATS-SERVICE/gen/go => ../gen/go
+replace github.com/RenatoCabral2022/WhatsWebService/gen/go => ../gen/go

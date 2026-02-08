@@ -1,4 +1,4 @@
-module github.com/RenatoCabral2022/WHATS-SERVICE/control-plane
+module github.com/RenatoCabral2022/WhatsWebService/control-plane
 
 go 1.22
 

@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	whatsv1 "github.com/RenatoCabral2022/WHATS-SERVICE/gen/go/whats/v1"
+	whatsv1 "github.com/RenatoCabral2022/WhatsWebService/gen/go/whats/v1"
 )
 
 // Client provides gRPC connections to the ASR and TTS inference services.

@@ -3,7 +3,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/RenatoCabral2022/WHATS-SERVICE/gen/go
+      value: github.com/RenatoCabral2022/WhatsWebService/gen/go
 plugins:
   # Go protobuf messages
   - local: protoc-gen-go

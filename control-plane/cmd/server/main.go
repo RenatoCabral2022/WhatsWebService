@@ -13,9 +13,9 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"github.com/RenatoCabral2022/WHATS-SERVICE/control-plane/internal/config"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/control-plane/internal/handler"
-	"github.com/RenatoCabral2022/WHATS-SERVICE/control-plane/internal/middleware"
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/config"
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/handler"
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/middleware"
 )
 
 func main() {

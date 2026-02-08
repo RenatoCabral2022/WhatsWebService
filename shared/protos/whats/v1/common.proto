@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package whats.v1;
 
-option go_package = "github.com/RenatoCabral2022/WHATS-SERVICE/gen/go/whats/v1;whatsv1";
+option go_package = "github.com/RenatoCabral2022/WhatsWebService/gen/go/whats/v1;whatsv1";
 
 // AudioFormat describes the encoding of an audio buffer.
 message AudioFormat {

@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/RenatoCabral2022/WHATS-SERVICE/control-plane/internal/model"
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/model"
 )
 
 // PostWebRTCAnswer handles POST /v1/sessions/{sessionId}/webrtc/answer.
