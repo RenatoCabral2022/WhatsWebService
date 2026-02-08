@@ -7,6 +7,9 @@ let pc = null;        // RTCPeerConnection
 let dc = null;        // RTCDataChannel
 let sessionId = null;
 let localStream = null;
+let ttsMarks = null;  // Current word marks from tts.marks event
+let ttsPlaybackStart = 0;  // Timestamp when TTS audio playback began
+let markTimers = [];  // setTimeout IDs for word highlighting
 
 async function connect() {
     try {
@@ -149,17 +152,32 @@ function handleServerMessage(msg) {
             document.getElementById('transcript').innerText =
                 `[${msg.payload.language}] ${msg.payload.text}`;
             if (msg.payload.translatedText) {
+                // Show translated text as plain text until marks arrive
                 document.getElementById('translation').innerText =
                     `[${msg.payload.targetLanguage}] ${msg.payload.translatedText}`;
             } else {
                 document.getElementById('translation').innerText = '';
             }
             break;
+        case 'tts.marks':
+            ttsMarks = msg.payload;
+            // Render words as individual spans for highlighting
+            renderWordSpans(msg.payload);
+            break;
         case 'tts.started':
-            updateStatus('TTS streaming...');
+            updateStatus('TTS playing...');
+            // Ensure audio element is playing (browser may pause autoplay after silence)
+            const audioEl = document.getElementById('remote-audio');
+            if (audioEl && audioEl.paused) {
+                audioEl.play().catch(() => {});
+            }
+            // Start word highlighting — marks are already available (sent before tts.started)
+            startWordHighlighting();
             break;
         case 'tts.done':
             updateStatus('Connected');
+            // Mark all words as spoken
+            finalizeHighlighting();
             break;
         case 'metrics.latency':
             document.getElementById('metrics').innerText =
@@ -170,6 +188,67 @@ function handleServerMessage(msg) {
             updateStatus(`Error: ${msg.payload.message}`);
             break;
     }
+}
+
+function renderWordSpans(marks) {
+    const el = document.getElementById('translation');
+    // Build HTML with a span per word
+    const spans = marks.words.map((w, i) =>
+        `<span class="word" data-idx="${i}">${escapeHtml(w.word)}</span>`
+    ).join(' ');
+    el.innerHTML = spans;
+}
+
+function startWordHighlighting() {
+    // Clear any previous timers
+    markTimers.forEach(t => clearTimeout(t));
+    markTimers = [];
+
+    if (!ttsMarks || !ttsMarks.words) return;
+
+    ttsPlaybackStart = performance.now();
+    const words = ttsMarks.words;
+    const el = document.getElementById('translation');
+    const spans = el.querySelectorAll('.word');
+
+    words.forEach((w, i) => {
+        // Schedule highlighting at word start time
+        const startTimer = setTimeout(() => {
+            // Remove active from previous
+            spans.forEach(s => s.classList.remove('active'));
+            // Add active + spoken to current
+            if (spans[i]) {
+                spans[i].classList.add('active', 'spoken');
+            }
+        }, w.startMs);
+        markTimers.push(startTimer);
+    });
+
+    // Remove active class after last word ends
+    if (words.length > 0) {
+        const lastEnd = words[words.length - 1].endMs;
+        const endTimer = setTimeout(() => {
+            spans.forEach(s => s.classList.remove('active'));
+        }, lastEnd);
+        markTimers.push(endTimer);
+    }
+}
+
+function finalizeHighlighting() {
+    markTimers.forEach(t => clearTimeout(t));
+    markTimers = [];
+    const el = document.getElementById('translation');
+    el.querySelectorAll('.word').forEach(s => {
+        s.classList.remove('active');
+        s.classList.add('spoken');
+    });
+    ttsMarks = null;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 function disconnect() {

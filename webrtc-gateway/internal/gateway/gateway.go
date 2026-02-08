@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/pion/interceptor"
 	"github.com/pion/interceptor/pkg/nack"
@@ -475,15 +477,6 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 			ttsLang = asrResp.TargetLanguage
 		}
 
-		// Send tts.started event
-		sess.SendDataChannelMessage(datachannel.Envelope{
-			Type:      "tts.started",
-			SessionID: sessionID,
-			ActionID:  actionID,
-			Timestamp: time.Now().UnixMilli(),
-			Payload:   json.RawMessage(`{"voice":"default"}`),
-		})
-
 		// Start TTS streaming
 		ttsStart := time.Now()
 		voice := cmd.TTSOptions.Voice
@@ -498,26 +491,66 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		rawChunks, errs := gw.inferenceClient.SynthesizeStream(ctx, ttsText,
 			sessionID, actionID, voice, ttsLang, speed)
 
-		// Proxy channel to measure first-chunk latency
-		timedChunks := make(chan []byte, 16)
-		go func() {
-			defer close(timedChunks)
-			first := true
-			for chunk := range rawChunks {
-				if first {
-					ttsFirstChunkMs = float64(time.Since(ttsStart).Microseconds()) / 1000.0
-					first = false
-				}
-				select {
-				case timedChunks <- chunk:
-				case <-ctx.Done():
-					return
-				}
+		// Buffer all TTS chunks so we can calculate word marks
+		// before starting playback.
+		var allChunks [][]byte
+		var totalPCMBytes int
+		first := true
+		for chunk := range rawChunks {
+			if first {
+				ttsFirstChunkMs = float64(time.Since(ttsStart).Microseconds()) / 1000.0
+				first = false
 			}
-		}()
+			allChunks = append(allChunks, chunk)
+			totalPCMBytes += len(chunk)
+			if ctx.Err() != nil {
+				break
+			}
+		}
+
+		// Calculate word marks and send tts.marks event before playback.
+		// 16kHz * 2 bytes/sample = 32 bytes per ms.
+		if totalPCMBytes > 0 {
+			totalDurationMs := float64(totalPCMBytes) / 32.0
+			marks := calculateWordMarks(ttsText, totalDurationMs)
+			marksPayload, _ := json.Marshal(datachannel.EventTtsMarks{
+				Text:       ttsText,
+				Words:      marks,
+				DurationMs: totalDurationMs,
+			})
+			sess.SendDataChannelMessage(datachannel.Envelope{
+				Type:      "tts.marks",
+				SessionID: sessionID,
+				ActionID:  actionID,
+				Timestamp: time.Now().UnixMilli(),
+				Payload:   json.RawMessage(marksPayload),
+			})
+		}
+
+		// Send tts.started AFTER marks so the client has word data ready
+		// when it begins scheduling highlight timers.
+		sess.SendDataChannelMessage(datachannel.Envelope{
+			Type:      "tts.started",
+			SessionID: sessionID,
+			ActionID:  actionID,
+			Timestamp: time.Now().UnixMilli(),
+			Payload:   json.RawMessage(`{"voice":"default"}`),
+		})
+
+		// Feed buffered chunks to PlayPCMStream.
+		bufferedCh := make(chan []byte, len(allChunks))
+		for _, chunk := range allChunks {
+			bufferedCh <- chunk
+		}
+		close(bufferedCh)
+
+		logger.Info("starting TTS playback",
+			zap.Int("chunks", len(allChunks)),
+			zap.Int("totalPCMBytes", totalPCMBytes),
+		)
 
 		// Play audio stream to browser
-		if playErr := sess.PlayPCMStream(ctx, timedChunks); playErr != nil {
+		if playErr := sess.PlayPCMStream(ctx, bufferedCh); playErr != nil {
 			if ctx.Err() == context.DeadlineExceeded {
 				logger.Warn("enunciate timed out during TTS playback")
 				metrics.InferenceTimeoutsTotal.Inc()
@@ -594,6 +627,40 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		zap.Float64("ttsFirstChunkMs", ttsFirstChunkMs),
 		zap.Float64("totalMs", totalMs),
 	)
+}
+
+// calculateWordMarks splits text into words and distributes timing
+// proportionally by character count across the total audio duration.
+func calculateWordMarks(text string, totalDurationMs float64) []datachannel.WordMark {
+	words := strings.Fields(text)
+	if len(words) == 0 {
+		return nil
+	}
+
+	// Use rune count as a proxy for spoken duration.
+	totalRunes := 0
+	wordRunes := make([]int, len(words))
+	for i, w := range words {
+		n := utf8.RuneCountInString(w)
+		wordRunes[i] = n
+		totalRunes += n
+	}
+	if totalRunes == 0 {
+		return nil
+	}
+
+	marks := make([]datachannel.WordMark, len(words))
+	currentMs := 0.0
+	for i, w := range words {
+		wordDurationMs := (float64(wordRunes[i]) / float64(totalRunes)) * totalDurationMs
+		marks[i] = datachannel.WordMark{
+			Word:    w,
+			StartMs: currentMs,
+			EndMs:   currentMs + wordDurationMs,
+		}
+		currentMs += wordDurationMs
+	}
+	return marks
 }
 
 // sendError sends an error event over the data channel.

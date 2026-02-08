@@ -44,6 +44,7 @@ button:hover:not(:disabled) {
 }
 
 #transcript,
+#translation,
 #metrics {
     padding: 12px;
     background: #222;
@@ -52,4 +53,39 @@ button:hover:not(:disabled) {
     font-family: monospace;
     font-size: 0.9em;
     min-height: 40px;
+}
+
+#translation {
+    font-size: 1.1em;
+    line-height: 1.6;
+}
+
+#translation .word {
+    transition: background-color 0.1s, color 0.1s;
+    padding: 1px 2px;
+    border-radius: 2px;
+}
+
+#translation .word.active {
+    background-color: #4a90d9;
+    color: #fff;
+}
+
+#translation .word.spoken {
+    color: #8cb4e0;
+}
+
+select, input[type="range"] {
+    background: #333;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 4px;
+}
+
+#lookback-label {
+    font-family: monospace;
+    font-size: 0.9em;
+    min-width: 28px;
+    text-align: right;
 }

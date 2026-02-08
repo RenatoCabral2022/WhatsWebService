@@ -52,6 +52,21 @@ type EventMetricsLatency struct {
 	TotalMs        float64 `json:"totalMs"`
 }
 
+// WordMark represents a single word's estimated timing in the TTS audio.
+type WordMark struct {
+	Word    string  `json:"word"`
+	StartMs float64 `json:"startMs"`
+	EndMs   float64 `json:"endMs"`
+}
+
+// EventTtsMarks is the payload for tts.marks events.
+// Sent before audio playback begins so the client can highlight words.
+type EventTtsMarks struct {
+	Text       string     `json:"text"`
+	Words      []WordMark `json:"words"`
+	DurationMs float64    `json:"durationMs"`
+}
+
 // EventTtsDone is the payload for tts.done events.
 type EventTtsDone struct {
 	DurationMs int `json:"durationMs"`
