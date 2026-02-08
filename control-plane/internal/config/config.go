@@ -3,14 +3,14 @@ package config
 import "os"
 
 type Config struct {
-	Port        string
-	GatewayAddr string
+	Port               string
+	GatewayInternalURL string
 }
 
 func Load() *Config {
 	return &Config{
-		Port:        getEnv("PORT", "8080"),
-		GatewayAddr: getEnv("GATEWAY_ADDR", "localhost:9090"),
+		Port:               getEnv("PORT", "8080"),
+		GatewayInternalURL: getEnv("GATEWAY_INTERNAL_URL", "http://localhost:9091"),
 	}
 }
 

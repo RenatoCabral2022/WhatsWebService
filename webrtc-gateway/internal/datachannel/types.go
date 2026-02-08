@@ -49,6 +49,11 @@ type EventMetricsLatency struct {
 	TotalMs        float64 `json:"totalMs"`
 }
 
+// EventTtsDone is the payload for tts.done events.
+type EventTtsDone struct {
+	DurationMs int `json:"durationMs"`
+}
+
 // EventError is the payload for error events.
 type EventError struct {
 	Code    string      `json:"code"`

@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 
 	"github.com/RenatoCabral2022/WHATS-SERVICE/control-plane/internal/config"
 	"github.com/RenatoCabral2022/WHATS-SERVICE/control-plane/internal/handler"
@@ -19,21 +20,29 @@ import (
 
 func main() {
 	cfg := config.Load()
+	h := handler.NewHandlers(cfg.GatewayInternalURL)
 
 	r := chi.NewRouter()
 	r.Use(chimw.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logging)
 	r.Use(chimw.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 
-	r.Get("/healthz", handler.Health)
+	r.Get("/healthz", h.Health)
 
 	r.Route("/v1", func(r chi.Router) {
 		r.Route("/sessions", func(r chi.Router) {
-			r.Post("/", handler.CreateSession)
+			r.Post("/", h.CreateSession)
 			r.Route("/{sessionId}", func(r chi.Router) {
-				r.Delete("/", handler.DeleteSession)
-				r.Post("/webrtc/answer", handler.PostWebRTCAnswer)
+				r.Delete("/", h.DeleteSession)
+				r.Post("/webrtc/answer", h.PostWebRTCAnswer)
 			})
 		})
 	})
@@ -42,7 +51,7 @@ func main() {
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: 20 * time.Second,
 	}
 
 	go func() {

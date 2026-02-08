@@ -6,6 +6,9 @@ from concurrent import futures
 import grpc
 
 from asr.config import ASRConfig
+from asr.service import ASRService
+from asr.grpc_servicer import AsrServicer
+from whats.v1 import asr_pb2_grpc
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,8 +17,22 @@ logger = logging.getLogger(__name__)
 def serve():
     """Start the ASR gRPC server."""
     cfg = ASRConfig()
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=cfg.num_workers))
-    # TODO: register AsrServiceServicer after proto generation
+
+    # Load model at startup (not in request path)
+    asr_service = ASRService(
+        model_size=cfg.model_size,
+        device=cfg.device,
+        compute_type=cfg.compute_type,
+    )
+
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=cfg.num_workers),
+        options=[
+            ("grpc.max_receive_message_length", 10 * 1024 * 1024),  # 10MB
+        ],
+    )
+    asr_pb2_grpc.add_AsrServiceServicer_to_server(AsrServicer(asr_service), server)
+
     server.add_insecure_port(f"[::]:{cfg.grpc_port}")
     logger.info(
         "ASR server starting on port %d (model=%s, device=%s)",

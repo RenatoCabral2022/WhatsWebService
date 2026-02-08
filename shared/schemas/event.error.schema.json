@@ -27,6 +27,7 @@
             "ASR_FAILED",
             "TTS_FAILED",
             "BUFFER_EMPTY",
+            "INSUFFICIENT_AUDIO_BUFFER",
             "RATE_LIMITED",
             "INTERNAL_ERROR"
           ]

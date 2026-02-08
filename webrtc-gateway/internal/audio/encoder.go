@@ -1,11 +1,36 @@
 package audio
 
-// Encoder converts PCM s16le, 16kHz, mono audio to Opus for WebRTC output.
-// TODO: implement using pion/opus or a CGo Opus binding in Phase 2.
-type Encoder struct{}
+import "github.com/hraban/opus"
 
-// Encode converts PCM s16le bytes to an Opus frame.
-func (e *Encoder) Encode(pcm []byte) ([]byte, error) {
-	// TODO: implement Opus encoding
-	return nil, nil
+const (
+	FrameDurationMs = 20
+	SamplesPerFrame = OpusSampleRate * FrameDurationMs / 1000 // 960
+	EncoderBitrate  = 32000
+)
+
+// Encoder wraps hraban/opus to encode 48kHz int16 PCM to Opus.
+// Not thread-safe — use one per session.
+type Encoder struct {
+	enc *opus.Encoder
+}
+
+func NewEncoder() (*Encoder, error) {
+	enc, err := opus.NewEncoder(OpusSampleRate, OpusChannels, opus.AppVoIP)
+	if err != nil {
+		return nil, err
+	}
+	if err := enc.SetBitrate(EncoderBitrate); err != nil {
+		return nil, err
+	}
+	return &Encoder{enc: enc}, nil
+}
+
+// Encode converts a 960-sample (20ms at 48kHz) int16 frame to Opus bytes.
+func (e *Encoder) Encode(pcm []int16) ([]byte, error) {
+	buf := make([]byte, 1024)
+	n, err := e.enc.Encode(pcm, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf[:n], nil
 }

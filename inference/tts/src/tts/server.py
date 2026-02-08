@@ -6,6 +6,9 @@ from concurrent import futures
 import grpc
 
 from tts.config import TTSConfig
+from tts.service import TTSService
+from tts.grpc_servicer import TtsServicer
+from whats.v1 import tts_pb2_grpc
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -14,13 +17,21 @@ logger = logging.getLogger(__name__)
 def serve():
     """Start the TTS gRPC server."""
     cfg = TTSConfig()
+
+    # Load model at startup (not in request path)
+    tts_service = TTSService(
+        model_path=cfg.model_path,
+        device=cfg.device,
+    )
+
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=cfg.num_workers))
-    # TODO: register TtsServiceServicer after proto generation
+    tts_pb2_grpc.add_TtsServiceServicer_to_server(TtsServicer(tts_service), server)
+
     server.add_insecure_port(f"[::]:{cfg.grpc_port}")
     logger.info(
         "TTS server starting on port %d (model=%s, device=%s)",
         cfg.grpc_port,
-        cfg.model_name,
+        cfg.model_path,
         cfg.device,
     )
     server.start()

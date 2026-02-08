@@ -8,11 +8,16 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
-COPY pyproject.toml ./
+# Copy gen/python for proto stubs
+COPY gen/python/ /app/gen/python/
+
+# Copy ASR service source
+COPY inference/asr/pyproject.toml ./
+COPY inference/asr/src/ ./src/
+COPY inference/asr/tests/ ./tests/
 RUN uv pip install --system .
 
-COPY src/ ./src/
-COPY tests/ ./tests/
+ENV PYTHONPATH=/app/gen/python
 
 EXPOSE 50051
 CMD ["python", "-m", "asr.server"]

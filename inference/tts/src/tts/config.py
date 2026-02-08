@@ -7,7 +7,7 @@ class TTSConfig:
     """TTS service configuration loaded from environment variables."""
 
     grpc_port: int = int(os.getenv("GRPC_PORT", "50052"))
-    model_name: str = os.getenv("TTS_MODEL", "default")
+    model_path: str = os.getenv("TTS_MODEL_PATH", "/app/models/en_US-lessac-medium.onnx")
     device: str = os.getenv("TTS_DEVICE", "cpu")
     num_workers: int = int(os.getenv("NUM_WORKERS", "2"))
     # Output format: PCM s16le, 16kHz, mono (canonical format)

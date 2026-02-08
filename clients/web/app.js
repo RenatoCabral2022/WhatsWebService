@@ -1,5 +1,5 @@
 // Whats - WebRTC client POC
-// Minimal reference implementation for browser-based audio DVR.
+// Server creates offer, browser creates answer.
 
 const API_BASE = 'http://localhost:8080/v1';
 
@@ -9,44 +9,115 @@ let sessionId = null;
 let localStream = null;
 
 async function connect() {
-    // 1. Create session via REST
-    const res = await fetch(`${API_BASE}/sessions`, { method: 'POST' });
-    const session = await res.json();
-    sessionId = session.sessionId;
+    try {
+        updateStatus('Creating session...');
 
-    // 2. Create PeerConnection
-    pc = new RTCPeerConnection({
-        iceServers: session.iceServers || [
-            { urls: 'stun:stun.l.google.com:19302' }
-        ]
-    });
-
-    // 3. Create data channel for commands/events
-    dc = pc.createDataChannel('commands', { ordered: true });
-    dc.onopen = () => updateStatus('Data channel open');
-    dc.onmessage = (e) => handleServerMessage(JSON.parse(e.data));
-
-    // 4. Get microphone audio
-    localStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-            sampleRate: 16000,
-            channelCount: 1,
-            echoCancellation: true,
-            noiseSuppression: true
+        // 1. Create session via REST — receive server's SDP offer
+        const res = await fetch(`${API_BASE}/sessions`, { method: 'POST' });
+        if (!res.ok) {
+            updateStatus('Failed to create session');
+            return;
         }
-    });
+        const session = await res.json();
+        sessionId = session.sessionId;
+        updateStatus(`Session ${sessionId.slice(0, 8)}... created`);
 
-    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        // 2. Create PeerConnection with ICE servers from server
+        pc = new RTCPeerConnection({
+            iceServers: session.iceServers || [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        });
 
-    // 5. Create offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+        // 3. Receive server-created data channel
+        pc.ondatachannel = (event) => {
+            dc = event.channel;
+            dc.onopen = () => updateStatus('Data channel open');
+            dc.onmessage = (e) => {
+                if (typeof e.data === 'string') {
+                    handleServerMessage(JSON.parse(e.data));
+                }
+                // ignore binary messages
+            };
+        };
 
-    // 6. TODO: exchange SDP with server via POST /v1/sessions/{id}/webrtc/answer
+        // 4. Handle remote audio track from gateway
+        pc.ontrack = (event) => {
+            const audio = document.getElementById('remote-audio');
+            if (audio && event.streams && event.streams[0]) {
+                audio.srcObject = event.streams[0];
+            }
+        };
 
-    updateStatus('Connected');
-    document.getElementById('btn-enunciate').disabled = false;
-    document.getElementById('btn-disconnect').disabled = false;
+        pc.oniceconnectionstatechange = () => {
+            console.log('ICE connection state:', pc.iceConnectionState);
+        };
+
+        // 5. Set server's offer as remote description FIRST (answerer model)
+        updateStatus('Setting remote description...');
+        await pc.setRemoteDescription({
+            type: 'offer',
+            sdp: session.sdpOffer
+        });
+
+        // 6. Get microphone audio and add tracks
+        updateStatus('Requesting mic...');
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true
+            }
+        });
+        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+        // 7. Create answer
+        updateStatus('Creating answer...');
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        // 8. Wait for ICE gathering to complete (with timeout)
+        updateStatus('ICE gathering...');
+        await new Promise((resolve) => {
+            if (pc.iceGatheringState === 'complete') {
+                resolve();
+                return;
+            }
+            const timeout = setTimeout(resolve, 5000);
+            pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === 'complete') {
+                    clearTimeout(timeout);
+                    resolve();
+                }
+            };
+        });
+
+        // 9. Send SDP answer to server
+        updateStatus('Sending answer...');
+        const answerRes = await fetch(
+            `${API_BASE}/sessions/${sessionId}/webrtc/answer`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sdpAnswer: pc.localDescription.sdp })
+            }
+        );
+
+        if (answerRes.ok) {
+            updateStatus('Connected');
+        } else {
+            const errText = await answerRes.text();
+            updateStatus(`Answer failed: ${errText}`);
+            return;
+        }
+
+        document.getElementById('btn-enunciate').disabled = false;
+        document.getElementById('btn-disconnect').disabled = false;
+
+    } catch (err) {
+        console.error('Connect error:', err);
+        updateStatus(`Error: ${err.message}`);
+    }
 }
 
 function enunciate(lookbackSeconds = 5) {
@@ -79,6 +150,9 @@ function handleServerMessage(msg) {
         case 'tts.started':
             updateStatus('TTS streaming...');
             break;
+        case 'tts.done':
+            updateStatus('Connected');
+            break;
         case 'metrics.latency':
             document.getElementById('metrics').innerText =
                 `Latency: ${JSON.stringify(msg.payload)}`;
@@ -97,6 +171,8 @@ function disconnect() {
     if (sessionId) {
         fetch(`${API_BASE}/sessions/${sessionId}`, { method: 'DELETE' });
     }
+    const audio = document.getElementById('remote-audio');
+    if (audio) audio.srcObject = null;
     sessionId = null;
     pc = null;
     dc = null;
