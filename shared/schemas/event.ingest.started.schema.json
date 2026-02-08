@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/event.ingest.started.schema.json",
+  "title": "EventIngestStarted",
+  "description": "Server event: URL audio ingest has started.",
+  "type": "object",
+  "required": ["type", "sessionId", "timestamp", "payload"],
+  "properties": {
+    "type": { "const": "ingest.started" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "integer" },
+    "payload": {
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The audio source URL being ingested."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

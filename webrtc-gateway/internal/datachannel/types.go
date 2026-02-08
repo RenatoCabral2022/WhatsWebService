@@ -78,3 +78,13 @@ type EventError struct {
 	Message string      `json:"message"`
 	Details interface{} `json:"details,omitempty"`
 }
+
+// EventIngestStarted is the payload for ingest.started events.
+type EventIngestStarted struct {
+	URL string `json:"url"`
+}
+
+// EventIngestStopped is the payload for ingest.stopped events.
+type EventIngestStopped struct {
+	Reason string `json:"reason"`
+}

@@ -19,6 +19,10 @@ var (
 		Name: "whats_gateway_inference_sem_used",
 		Help: "Number of inference semaphore slots currently in use",
 	})
+	ActiveIngests = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "whats_gateway_active_ingests",
+		Help: "Number of active URL ingest sources",
+	})
 )
 
 // Counters
@@ -54,6 +58,14 @@ var (
 	RTPGapsTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "whats_gateway_rtp_gaps_total",
 		Help: "Total RTP sequence number gaps detected",
+	})
+	IngestsStartedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "whats_gateway_ingests_started_total",
+		Help: "Total URL ingests started",
+	})
+	IngestsFailedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "whats_gateway_ingests_failed_total",
+		Help: "Total URL ingests that ended with errors",
 	})
 )
 

@@ -43,6 +43,9 @@ func main() {
 			r.Route("/{sessionId}", func(r chi.Router) {
 				r.Delete("/", h.DeleteSession)
 				r.Post("/webrtc/answer", h.PostWebRTCAnswer)
+				r.Post("/ingest/start", h.PostIngestStart)
+				r.Post("/ingest/stop", h.PostIngestStop)
+				r.Get("/ingest/status", h.GetIngestStatus)
 			})
 		})
 	})

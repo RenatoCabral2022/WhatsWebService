@@ -13,6 +13,7 @@ import (
 
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/audio"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/datachannel"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/ingest"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/metrics"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/ringbuffer"
 )
@@ -35,6 +36,9 @@ type Session struct {
 
 	activeAction string
 	actionCancel context.CancelFunc
+
+	ingestSource ingest.Source
+	ingestActive bool // when true, mic RTP writes to ring buffer are suppressed
 
 	lastSeqNum uint16
 	seqNumInit bool
@@ -74,6 +78,47 @@ func (s *Session) SetRouter(r *datachannel.Router) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.router = r
+}
+
+// SetIngestSource attaches an ingest source to the session.
+// If a previous ingest source exists, it is stopped first.
+// While ingest is active, mic RTP writes to the ring buffer are suppressed.
+func (s *Session) SetIngestSource(src ingest.Source) {
+	s.mu.Lock()
+	old := s.ingestSource
+	s.ingestSource = src
+	s.ingestActive = true
+	s.mu.Unlock()
+
+	if old != nil {
+		old.Stop()
+	}
+}
+
+// IngestStatus returns the status of the current ingest source, or nil.
+func (s *Session) IngestStatus() *ingest.Status {
+	s.mu.Lock()
+	src := s.ingestSource
+	s.mu.Unlock()
+
+	if src == nil {
+		return nil
+	}
+	st := src.Status()
+	return &st
+}
+
+// StopIngest stops any active ingest source and restores mic writes.
+func (s *Session) StopIngest() {
+	s.mu.Lock()
+	src := s.ingestSource
+	s.ingestSource = nil
+	s.ingestActive = false
+	s.mu.Unlock()
+
+	if src != nil {
+		src.Stop()
+	}
 }
 
 // TryStartAction attempts to claim the session for an action.
@@ -206,6 +251,7 @@ func (s *Session) PlayPCMStream(ctx context.Context, chunks <-chan []byte) error
 func (s *Session) HandleInboundRTP(seqNum uint16, opusData []byte) {
 	s.mu.Lock()
 	dec := s.decoder
+	ingestActive := s.ingestActive
 	s.mu.Unlock()
 
 	if dec == nil {
@@ -234,7 +280,9 @@ func (s *Session) HandleInboundRTP(seqNum uint16, opusData []byte) {
 					}
 					down := audio.Downsample48to16Into(plc, bufs.DownsampleBuf)
 					pcmBytes := audio.Int16ToBytesInto(down, bufs.BytesBuf)
-					s.RingBuffer.Write(pcmBytes)
+					if !ingestActive {
+						s.RingBuffer.Write(pcmBytes)
+					}
 				}
 			}
 		}
@@ -251,10 +299,12 @@ func (s *Session) HandleInboundRTP(seqNum uint16, opusData []byte) {
 	}
 	pcm48 := bufs.DecodeBuf[:n]
 
-	// Downsample 48kHz → 16kHz and write to ring buffer
+	// Downsample 48kHz → 16kHz and write to ring buffer (suppressed during ingest)
 	pcm16 := audio.Downsample48to16Into(pcm48, bufs.DownsampleBuf)
 	pcmBytes := audio.Int16ToBytesInto(pcm16, bufs.BytesBuf)
-	s.RingBuffer.Write(pcmBytes)
+	if !ingestActive {
+		s.RingBuffer.Write(pcmBytes)
+	}
 }
 
 // PlayTestTone generates a sine wave, encodes it to Opus, and writes it to the outbound track.
@@ -345,6 +395,12 @@ func (s *Session) Stop() {
 	if s.actionCancel != nil {
 		s.actionCancel()
 		s.actionCancel = nil
+	}
+
+	if s.ingestSource != nil {
+		s.ingestSource.Stop()
+		s.ingestSource = nil
+		s.ingestActive = false
 	}
 
 	close(s.stopCh)

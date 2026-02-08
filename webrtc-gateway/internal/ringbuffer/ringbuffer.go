@@ -113,6 +113,12 @@ func (rb *RingBuffer) SnapshotInto(seconds int, dst []byte) []byte {
 	return out
 }
 
+// CapacitySeconds returns the maximum duration the buffer can hold.
+// Safe to call without locking — capacity is immutable after construction.
+func (rb *RingBuffer) CapacitySeconds() float64 {
+	return float64(rb.capacity) / float64(BytesPerSecond)
+}
+
 // Available returns the number of seconds of audio currently stored.
 func (rb *RingBuffer) Available() float64 {
 	rb.mu.Lock()

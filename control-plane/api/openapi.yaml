@@ -72,6 +72,80 @@ paths:
         "404":
           description: Session not found
 
+  /v1/sessions/{sessionId}/ingest/start:
+    post:
+      summary: Start URL audio ingest
+      operationId: postIngestStart
+      tags: [sessions, ingest]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestStartRequest"
+      responses:
+        "202":
+          description: Ingest started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [started]
+        "400":
+          description: Invalid URL or SSRF rejected
+        "404":
+          description: Session not found
+
+  /v1/sessions/{sessionId}/ingest/stop:
+    post:
+      summary: Stop URL audio ingest
+      operationId: postIngestStop
+      tags: [sessions, ingest]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Ingest stopped
+        "404":
+          description: Session not found
+
+  /v1/sessions/{sessionId}/ingest/status:
+    get:
+      summary: Get ingest status
+      operationId: getIngestStatus
+      tags: [sessions, ingest]
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ingest status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestStatusResponse"
+        "404":
+          description: Session not found
+
   /healthz:
     get:
       summary: Health check
@@ -126,3 +200,28 @@ components:
         sdpAnswer:
           type: string
           description: SDP answer from the client
+
+    IngestStartRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: Audio source URL (MP3, WAV, HLS, icecast)
+          maxLength: 2048
+
+    IngestStatusResponse:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [none, starting, running, stopped, error]
+        sourceUrl:
+          type: string
+        secondsBuffered:
+          type: number
+        bytesRead:
+          type: integer
+        lastError:
+          type: string

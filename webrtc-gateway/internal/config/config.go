@@ -20,6 +20,7 @@ type Config struct {
 	MaxLookbackSec          int
 	ActionTimeoutSec        int
 	MaxInferenceConcurrency int
+	MaxIngestDurationSec    int
 }
 
 func Load() *Config {
@@ -35,6 +36,7 @@ func Load() *Config {
 		MaxLookbackSec:          getEnvInt("MAX_LOOKBACK_SEC", 60),
 		ActionTimeoutSec:        getEnvInt("ACTION_TIMEOUT_SEC", 60),
 		MaxInferenceConcurrency: getEnvInt("MAX_INFERENCE_CONCURRENCY", 4),
+		MaxIngestDurationSec:    getEnvInt("MAX_INGEST_DURATION_SEC", 1800),
 	}
 }
 

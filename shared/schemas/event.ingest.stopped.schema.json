@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whats-service/schemas/event.ingest.stopped.schema.json",
+  "title": "EventIngestStopped",
+  "description": "Server event: URL audio ingest has stopped.",
+  "type": "object",
+  "required": ["type", "sessionId", "timestamp", "payload"],
+  "properties": {
+    "type": { "const": "ingest.stopped" },
+    "sessionId": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "integer" },
+    "payload": {
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Why ingest stopped (source_ended, user_stopped, error, etc.)."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -28,6 +28,16 @@
                 Disconnect
             </button>
         </div>
+        <div id="ingest-controls">
+            <input type="text" id="ingest-url" placeholder="Paste audio URL (MP3/WAV/HLS/icecast)...">
+            <button id="btn-ingest-start" onclick="ingestStart()" disabled>Ingest URL</button>
+            <button id="btn-ingest-stop" onclick="ingestStop()" disabled>Stop Ingest</button>
+            <div id="ingest-status"></div>
+        </div>
+        <div id="buffer-viz" style="display:none;">
+            <canvas id="buffer-canvas" width="560" height="64"></canvas>
+            <div id="buffer-label">0.0s / 60s</div>
+        </div>
         <div id="transcript"></div>
         <div id="translation"></div>
         <div id="metrics"></div>

@@ -10,6 +10,9 @@ let localStream = null;
 let ttsMarks = null;  // Current word marks from tts.marks event
 let ttsPlaybackStart = 0;  // Timestamp when TTS audio playback began
 let markTimers = [];  // setTimeout IDs for word highlighting
+let ingestPollTimer = null;
+let bufferCapSec = 60;
+let waveformBars = [];  // Pre-seeded random bar heights for waveform look
 
 async function connect() {
     try {
@@ -116,6 +119,7 @@ async function connect() {
 
         document.getElementById('btn-enunciate').disabled = false;
         document.getElementById('btn-disconnect').disabled = false;
+        document.getElementById('btn-ingest-start').disabled = false;
 
     } catch (err) {
         console.error('Connect error:', err);
@@ -183,9 +187,30 @@ function handleServerMessage(msg) {
             document.getElementById('metrics').innerText =
                 `Latency: ${JSON.stringify(msg.payload)}`;
             break;
+        case 'ingest.started':
+            document.getElementById('ingest-status').innerText =
+                `Ingesting: ${msg.payload.url}`;
+            document.getElementById('btn-ingest-start').disabled = true;
+            document.getElementById('btn-ingest-stop').disabled = false;
+            startBufferPolling();
+            break;
+        case 'ingest.stopped':
+            document.getElementById('ingest-status').innerText =
+                `Ingest stopped (${msg.payload.reason})`;
+            document.getElementById('btn-ingest-start').disabled = false;
+            document.getElementById('btn-ingest-stop').disabled = true;
+            stopBufferPolling();
+            break;
         case 'error':
             console.error('Server error:', msg.payload);
             updateStatus(`Error: ${msg.payload.message}`);
+            if (msg.payload.code === 'INGEST_FAILED') {
+                document.getElementById('ingest-status').innerText =
+                    `Ingest error: ${msg.payload.message}`;
+                document.getElementById('btn-ingest-start').disabled = false;
+                document.getElementById('btn-ingest-stop').disabled = true;
+                stopBufferPolling();
+            }
             break;
     }
 }
@@ -251,7 +276,166 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+async function ingestStart() {
+    if (!sessionId) return;
+    const url = document.getElementById('ingest-url').value.trim();
+    if (!url) {
+        document.getElementById('ingest-status').innerText = 'Enter a URL first';
+        return;
+    }
+    try {
+        document.getElementById('btn-ingest-start').disabled = true;
+        document.getElementById('ingest-status').innerText = 'Starting ingest...';
+        const res = await fetch(
+            `${API_BASE}/sessions/${sessionId}/ingest/start`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url })
+            }
+        );
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: res.statusText }));
+            document.getElementById('ingest-status').innerText =
+                `Ingest failed: ${err.error || res.statusText}`;
+            document.getElementById('btn-ingest-start').disabled = false;
+        }
+    } catch (err) {
+        document.getElementById('ingest-status').innerText = `Error: ${err.message}`;
+        document.getElementById('btn-ingest-start').disabled = false;
+    }
+}
+
+async function ingestStop() {
+    if (!sessionId) return;
+    try {
+        document.getElementById('btn-ingest-stop').disabled = true;
+        await fetch(
+            `${API_BASE}/sessions/${sessionId}/ingest/stop`,
+            { method: 'POST' }
+        );
+    } catch (err) {
+        console.error('Ingest stop error:', err);
+    }
+}
+
+// ── Buffer visualization ──────────────────────────────────────
+
+function seedWaveformBars(count) {
+    waveformBars = [];
+    for (let i = 0; i < count; i++) {
+        // Pseudo-random heights that look like an audio waveform
+        waveformBars.push(0.25 + Math.random() * 0.75);
+    }
+}
+
+function startBufferPolling() {
+    const viz = document.getElementById('buffer-viz');
+    viz.style.display = 'block';
+    seedWaveformBars(120); // 120 bars = 2 per second for 60s
+    // Set canvas internal resolution to match display size
+    const canvas = document.getElementById('buffer-canvas');
+    canvas.width = canvas.offsetWidth * (window.devicePixelRatio || 1);
+    canvas.height = 64 * (window.devicePixelRatio || 1);
+    drawBuffer(0);
+    pollIngestStatus(); // poll immediately, don't wait 800ms
+    ingestPollTimer = setInterval(pollIngestStatus, 800);
+}
+
+function stopBufferPolling() {
+    if (ingestPollTimer) {
+        clearInterval(ingestPollTimer);
+        ingestPollTimer = null;
+    }
+}
+
+async function pollIngestStatus() {
+    if (!sessionId) return;
+    try {
+        const res = await fetch(`${API_BASE}/sessions/${sessionId}/ingest/status`);
+        if (!res.ok) {
+            console.warn('ingest status poll failed:', res.status);
+            return;
+        }
+        const data = await res.json();
+        drawBuffer(data.secondsBuffered || 0);
+    } catch (err) {
+        console.warn('ingest status poll error:', err);
+    }
+}
+
+function drawBuffer(bufferedSec) {
+    const canvas = document.getElementById('buffer-canvas');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const W = canvas.width;
+    const H = canvas.height;
+    const totalBars = waveformBars.length;
+    const barW = W / totalBars;
+    const gap = dpr;
+    const filledBars = Math.round((bufferedSec / bufferCapSec) * totalBars);
+    const lookbackSec = parseInt(document.getElementById('lookback-slider').value, 10);
+    const lookbackBars = Math.round((lookbackSec / bufferCapSec) * totalBars);
+
+    // Lookback window: the last N seconds of what's buffered
+    const lookbackStart = Math.max(0, filledBars - lookbackBars);
+
+    // Background
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Draw bars
+    for (let i = 0; i < totalBars; i++) {
+        const barH = waveformBars[i] * (H - 8 * dpr);
+        const x = i * barW;
+        const y = (H - barH) / 2;
+
+        if (i < filledBars) {
+            if (i >= lookbackStart) {
+                // Lookback window — bright cyan
+                ctx.fillStyle = '#22d3ee';
+            } else {
+                // Filled but outside lookback — dimmer teal
+                ctx.fillStyle = '#1a6b5a';
+            }
+        } else {
+            // Unfilled — subtle
+            ctx.fillStyle = '#2a2a2a';
+        }
+        ctx.fillRect(x + gap / 2, y, Math.max(barW - gap, 1), barH);
+    }
+
+    // Draw lookback bracket line at the boundary
+    if (filledBars > 0 && lookbackStart > 0) {
+        const bx = lookbackStart * barW;
+        ctx.strokeStyle = 'rgba(34,211,238,0.6)';
+        ctx.lineWidth = dpr;
+        ctx.setLineDash([3 * dpr, 3 * dpr]);
+        ctx.beginPath();
+        ctx.moveTo(bx, 2 * dpr);
+        ctx.lineTo(bx, H - 2 * dpr);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // Draw playhead at fill position
+    if (filledBars > 0 && filledBars < totalBars) {
+        const px = filledBars * barW;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(px - dpr / 2, 0, dpr, H);
+    }
+
+    // Update label
+    const label = document.getElementById('buffer-label');
+    const bSec = bufferedSec.toFixed(1);
+    label.textContent = `${bSec}s buffered / ${bufferCapSec}s  ·  lookback ${lookbackSec}s`;
+}
+
+// ── Disconnect ────────────────────────────────────────────────
+
 function disconnect() {
+    stopBufferPolling();
+    document.getElementById('buffer-viz').style.display = 'none';
     if (dc) dc.close();
     if (pc) pc.close();
     if (localStream) localStream.getTracks().forEach(t => t.stop());
@@ -266,6 +450,9 @@ function disconnect() {
     updateStatus('Disconnected');
     document.getElementById('btn-enunciate').disabled = true;
     document.getElementById('btn-disconnect').disabled = true;
+    document.getElementById('btn-ingest-start').disabled = true;
+    document.getElementById('btn-ingest-stop').disabled = true;
+    document.getElementById('ingest-status').innerText = '';
 }
 
 function updateStatus(text) {
