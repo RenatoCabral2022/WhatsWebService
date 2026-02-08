@@ -24,6 +24,13 @@ build/
 .DS_Store
 Thumbs.db
 
+# Terraform
+infra/gce/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+
 # Environment
 .env
 .env.local

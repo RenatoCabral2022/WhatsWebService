@@ -1,0 +1,8 @@
+project_id   = "my-gcp-project-id"
+region       = "us-east1"
+zone         = "us-east1-b"
+machine_type = "e2-standard-4"
+disk_size_gb = 50
+repo_url     = "https://github.com/RenatoCabral2022/WhatsWebService.git"
+repo_branch  = "main"
+# git_token  = "ghp_xxxxx"  # Uncomment for private repos

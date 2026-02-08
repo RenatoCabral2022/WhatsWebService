@@ -1,0 +1,29 @@
+# Production overrides for GCE deployment
+# Usage: docker compose -f docker-compose.yml -f infra/gce/docker-compose.prod.yml up -d
+services:
+  webrtc-gateway:
+    # Host networking so ICE candidates contain the VM's public IP.
+    # Without this, candidates would contain Docker bridge IPs (172.x.x.x)
+    # and WebRTC from the internet would fail without a TURN server.
+    network_mode: "host"
+    ports: !reset []
+    environment:
+      - LISTEN_ADDR=:9090
+      - INTERNAL_API_ADDR=:9091
+      - METRICS_ADDR=:9092
+      # On host network, reach other containers via their published ports on localhost
+      - ASR_ADDR=127.0.0.1:50051
+      - TTS_ADDR=127.0.0.1:50052
+      - MAX_SESSIONS=100
+      - MAX_INFERENCE_CONCURRENCY=4
+      - ACTION_TIMEOUT_SEC=60
+      - MAX_LOOKBACK_SEC=60
+      - RING_BUFFER_SEC=60
+      - MAX_INGEST_DURATION_SEC=1800
+
+  web-client:
+    ports:
+      - "80:80"
+    volumes:
+      - ./clients/web:/usr/share/nginx/html:ro
+      - ./infra/gce/nginx.conf:/etc/nginx/conf.d/default.conf:ro
