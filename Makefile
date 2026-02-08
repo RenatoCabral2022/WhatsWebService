@@ -15,7 +15,10 @@ proto-go:
 		protoc -I shared/protos \
 			--go_out=gen/go --go_opt=paths=source_relative \
 			--go-grpc_out=gen/go --go-grpc_opt=paths=source_relative,require_unimplemented_servers=false \
-			shared/protos/whats/v1/*.proto'
+			shared/protos/whats/v1/*.proto && \
+		cd gen/go && go mod init github.com/RenatoCabral2022/WhatsWebService/gen/go && \
+		go mod edit -require google.golang.org/grpc@v1.70.0 -require google.golang.org/protobuf@v1.36.4 && \
+		go mod tidy'
 
 proto-python:
 	docker run --rm -v $(PWD):/workspace -w /workspace python:3.11-slim sh -c '\
