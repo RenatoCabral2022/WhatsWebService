@@ -7,6 +7,7 @@ require (
 	github.com/hraban/opus v0.0.0-20251117090126-c76ea7e21bf3
 	github.com/pion/interceptor v0.1.37
 	github.com/pion/webrtc/v4 v4.0.10
+	github.com/prometheus/client_golang v1.20.5
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.4

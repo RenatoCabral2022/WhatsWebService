@@ -75,6 +75,44 @@ func (rb *RingBuffer) Snapshot(seconds int) []byte {
 	return out
 }
 
+// SnapshotInto copies the last N seconds of audio into dst, avoiding allocation.
+// dst must have capacity >= seconds * BytesPerSecond.
+// Returns the used portion of dst, or nil if buffer is empty.
+func (rb *RingBuffer) SnapshotInto(seconds int, dst []byte) []byte {
+	rb.mu.Lock()
+	defer rb.mu.Unlock()
+
+	requested := seconds * BytesPerSecond
+	if requested > rb.capacity {
+		requested = rb.capacity
+	}
+
+	available := rb.written
+	if available > rb.capacity {
+		available = rb.capacity
+	}
+	if requested > available {
+		requested = available
+	}
+
+	if requested == 0 {
+		return nil
+	}
+
+	out := dst[:requested]
+	start := (rb.writePos - requested + rb.capacity) % rb.capacity
+
+	if start+requested <= rb.capacity {
+		copy(out, rb.buf[start:start+requested])
+	} else {
+		first := rb.capacity - start
+		copy(out[:first], rb.buf[start:])
+		copy(out[first:], rb.buf[:requested-first])
+	}
+
+	return out
+}
+
 // Available returns the number of seconds of audio currently stored.
 func (rb *RingBuffer) Available() float64 {
 	rb.mu.Lock()

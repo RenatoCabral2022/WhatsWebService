@@ -19,15 +19,26 @@ services:
     ports:
       - "9090:9090"
       - "9091:9091"
+      - "9092:9092"
     environment:
       - LISTEN_ADDR=:9090
       - INTERNAL_API_ADDR=:9091
+      - METRICS_ADDR=:9092
       - ASR_ADDR=asr:50051
       - TTS_ADDR=tts:50052
+      - MAX_SESSIONS=100
+      - MAX_INFERENCE_CONCURRENCY=4
+      - ACTION_TIMEOUT_SEC=60
+      - MAX_LOOKBACK_SEC=30
     depends_on:
       - asr
       - tts
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "2"
 
   asr:
     build:
@@ -41,6 +52,11 @@ services:
       - WHISPER_DEVICE=cpu
       - WHISPER_COMPUTE_TYPE=int8
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: "2"
     # For GPU support, uncomment:
     # deploy:
     #   resources:
@@ -61,6 +77,11 @@ services:
       - TTS_MODEL_PATH=/app/models/en_US-lessac-medium.onnx
       - TTS_DEVICE=cpu
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2"
 
   web-client:
     image: nginx:alpine

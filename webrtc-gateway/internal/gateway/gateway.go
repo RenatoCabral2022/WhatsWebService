@@ -16,6 +16,8 @@ import (
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/config"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/datachannel"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/inference"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/metrics"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/ringbuffer"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/session"
 )
 
@@ -26,7 +28,9 @@ type Gateway struct {
 	cfg             *config.Config
 	api             *webrtc.API
 	logger          *zap.Logger
-	inferenceClient *inference.Client
+	inferenceClient inference.InferenceClient
+	inferenceSem    chan struct{}
+	snapshotPool    sync.Pool
 
 	mu       sync.RWMutex
 	sessions map[string]*session.Session
@@ -67,13 +71,38 @@ func New(cfg *config.Config, logger *zap.Logger) (*Gateway, error) {
 		return nil, fmt.Errorf("create inference client: %w", err)
 	}
 
+	return newGateway(cfg, api, logger, infClient), nil
+}
+
+// NewForTest creates a Gateway with injected dependencies for testing.
+// Does not create WebRTC API or real inference client.
+func NewForTest(cfg *config.Config, logger *zap.Logger, infClient inference.InferenceClient) *Gateway {
+	return newGateway(cfg, nil, logger, infClient)
+}
+
+func newGateway(cfg *config.Config, api *webrtc.API, logger *zap.Logger, infClient inference.InferenceClient) *Gateway {
+	maxSnapshotBytes := cfg.MaxLookbackSec * ringbuffer.BytesPerSecond
 	return &Gateway{
 		cfg:             cfg,
 		api:             api,
 		logger:          logger,
 		inferenceClient: infClient,
-		sessions:        make(map[string]*session.Session),
-	}, nil
+		inferenceSem:    make(chan struct{}, cfg.MaxInferenceConcurrency),
+		snapshotPool: sync.Pool{
+			New: func() interface{} {
+				buf := make([]byte, maxSnapshotBytes)
+				return &buf
+			},
+		},
+		sessions: make(map[string]*session.Session),
+	}
+}
+
+// SessionCount returns the current number of active sessions.
+func (gw *Gateway) SessionCount() int {
+	gw.mu.RLock()
+	defer gw.mu.RUnlock()
+	return len(gw.sessions)
 }
 
 // ICEServers returns the configured STUN/TURN servers as WebRTC config objects.
@@ -197,6 +226,9 @@ func (gw *Gateway) CreateSession(id string) (string, error) {
 	gw.sessions[id] = sess
 	gw.mu.Unlock()
 
+	metrics.SessionsCreatedTotal.Inc()
+	metrics.ActiveSessions.Inc()
+
 	// Auto-cleanup if no answer received within 30 seconds
 	time.AfterFunc(30*time.Second, func() {
 		gw.mu.RLock()
@@ -241,6 +273,7 @@ func (gw *Gateway) DeleteSession(id string) {
 
 	if ok && sess != nil {
 		sess.Stop()
+		metrics.ActiveSessions.Dec()
 		gw.logger.Info("session deleted", zap.String("session", id))
 	}
 }
@@ -258,6 +291,7 @@ func (gw *Gateway) Shutdown() {
 	for _, sess := range sessions {
 		sess.Stop()
 	}
+	metrics.ActiveSessions.Set(0)
 
 	if gw.inferenceClient != nil {
 		gw.inferenceClient.Close()
@@ -296,20 +330,24 @@ func (gw *Gateway) makeEnunciateHandler(sess *session.Session) datachannel.Handl
 			return err
 		}
 
-		// Claim action slot (auto-cancels previous)
-		ctx := sess.TryStartAction(actionID)
+		// Claim action slot with timeout (auto-cancels previous)
+		timeout := time.Duration(gw.cfg.ActionTimeoutSec) * time.Second
+		ctx := sess.TryStartAction(actionID, timeout)
 
 		go gw.executeEnunciate(ctx, sess, sessionID, actionID, cmd)
 		return nil
 	}
 }
 
-// executeEnunciate runs the full enunciate pipeline: snapshot → ASR → (TTS in Phase 4).
+// executeEnunciate runs the full enunciate pipeline: snapshot → ASR → TTS → playback.
 func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	sessionID, actionID string, cmd datachannel.CommandEnunciate) {
 
 	defer sess.FinishAction(actionID)
 	start := time.Now()
+
+	metrics.ActiveActions.Inc()
+	defer metrics.ActiveActions.Dec()
 
 	logger := gw.logger.With(
 		zap.String("session", sessionID),
@@ -321,6 +359,9 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	if lookback <= 0 {
 		lookback = 5
 	}
+	if lookback > gw.cfg.MaxLookbackSec {
+		lookback = gw.cfg.MaxLookbackSec
+	}
 	available := sess.RingBuffer.Available()
 	if available < 0.5 {
 		logger.Warn("insufficient audio buffer", zap.Float64("available", available))
@@ -329,9 +370,25 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		return
 	}
 
-	// 2. Snapshot ring buffer
+	// 2. Acquire inference semaphore (fast-fail backpressure)
+	select {
+	case gw.inferenceSem <- struct{}{}:
+		metrics.InferenceSemUsed.Inc()
+	default:
+		logger.Warn("inference pool saturated")
+		gw.sendError(sess, sessionID, actionID, "RATE_LIMITED", "inference busy, try again")
+		metrics.ActionsTotal.WithLabelValues("rate_limited").Inc()
+		return
+	}
+	defer func() {
+		<-gw.inferenceSem
+		metrics.InferenceSemUsed.Dec()
+	}()
+
+	// 3. Snapshot ring buffer (pooled)
 	snapshotStart := time.Now()
-	pcm := sess.RingBuffer.Snapshot(lookback)
+	bufPtr := gw.snapshotPool.Get().(*[]byte)
+	pcm := sess.RingBuffer.SnapshotInto(lookback, *bufPtr)
 	snapshotMs := float64(time.Since(snapshotStart).Microseconds()) / 1000.0
 	logger.Info("snapshot taken",
 		zap.Int("lookback", lookback),
@@ -340,27 +397,37 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	)
 
 	if len(pcm) == 0 {
+		gw.snapshotPool.Put(bufPtr)
 		gw.sendError(sess, sessionID, actionID, "INSUFFICIENT_AUDIO_BUFFER", "ring buffer empty")
 		return
 	}
 
-	// 3. Determine ASR task
+	// 4. Determine ASR task
 	task := "transcribe"
 	languageHint := ""
 	if cmd.TargetLanguage != "" {
 		task = "translate"
 	}
 
-	// 4. Call ASR
+	// 5. Call ASR
 	asrStart := time.Now()
 	asrResp, err := gw.inferenceClient.Transcribe(ctx, pcm, sessionID, actionID, languageHint, task)
+	// Return snapshot buffer to pool after ASR completes (pcm shares backing array)
+	gw.snapshotPool.Put(bufPtr)
+
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			logger.Warn("enunciate timed out during ASR")
+			metrics.InferenceTimeoutsTotal.Inc()
+			metrics.ActionsTotal.WithLabelValues("timeout").Inc()
+		} else if ctx.Err() != nil {
 			logger.Info("enunciate cancelled during ASR")
-			return
+			metrics.ActionsTotal.WithLabelValues("cancelled").Inc()
+		} else {
+			logger.Error("ASR failed", zap.Error(err))
+			gw.sendError(sess, sessionID, actionID, "ASR_FAILED", err.Error())
+			metrics.ActionsTotal.WithLabelValues("asr_error").Inc()
 		}
-		logger.Error("ASR failed", zap.Error(err))
-		gw.sendError(sess, sessionID, actionID, "ASR_FAILED", err.Error())
 		return
 	}
 	asrMs := float64(time.Since(asrStart).Microseconds()) / 1000.0
@@ -370,7 +437,7 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		zap.Float64("asrMs", asrMs),
 	)
 
-	// 5. Emit asr.final event
+	// 6. Emit asr.final event
 	segments := make([]datachannel.Segment, 0, len(asrResp.Segments))
 	for _, s := range asrResp.Segments {
 		segments = append(segments, datachannel.Segment{
@@ -393,10 +460,6 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   json.RawMessage(asrPayload),
 	})
-
-	// Phase 4: TTS will be added here
-	// For now, if text is non-empty and TTS is connected, we could stream TTS audio.
-	// This is where SynthesizeStream + PlayPCMStream will be wired.
 
 	var ttsFirstChunkMs float64
 
@@ -448,11 +511,20 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 
 		// Play audio stream to browser
 		if playErr := sess.PlayPCMStream(ctx, timedChunks); playErr != nil {
+			if ctx.Err() == context.DeadlineExceeded {
+				logger.Warn("enunciate timed out during TTS playback")
+				metrics.InferenceTimeoutsTotal.Inc()
+				metrics.ActionsTotal.WithLabelValues("timeout").Inc()
+				return
+			}
 			if ctx.Err() != nil {
 				logger.Info("enunciate cancelled during TTS playback")
+				metrics.ActionsTotal.WithLabelValues("cancelled").Inc()
 				return
 			}
 			logger.Warn("TTS playback error", zap.Error(playErr))
+			metrics.ActionsTotal.WithLabelValues("tts_error").Inc()
+			return
 		}
 
 		// Check for gRPC errors
@@ -478,15 +550,15 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		})
 	}
 
-	// 6. Send latency metrics
+	// 7. Send latency metrics + record Prometheus histograms
 	totalMs := float64(time.Since(start).Milliseconds())
-	metrics := datachannel.EventMetricsLatency{
+	latencyEvt := datachannel.EventMetricsLatency{
 		SnapshotMs:      snapshotMs,
 		AsrMs:           asrMs,
 		TtsFirstChunkMs: ttsFirstChunkMs,
 		TotalMs:         totalMs,
 	}
-	metricsPayload, _ := json.Marshal(metrics)
+	metricsPayload, _ := json.Marshal(latencyEvt)
 	sess.SendDataChannelMessage(datachannel.Envelope{
 		Type:      "metrics.latency",
 		SessionID: sessionID,
@@ -494,6 +566,14 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   json.RawMessage(metricsPayload),
 	})
+
+	metrics.ActionsTotal.WithLabelValues("success").Inc()
+	metrics.ActionLatency.WithLabelValues("total").Observe(totalMs)
+	metrics.ActionLatency.WithLabelValues("snapshot").Observe(snapshotMs)
+	metrics.ActionLatency.WithLabelValues("asr").Observe(asrMs)
+	if ttsFirstChunkMs > 0 {
+		metrics.ActionLatency.WithLabelValues("tts_first_chunk").Observe(ttsFirstChunkMs)
+	}
 
 	logger.Info("enunciate complete",
 		zap.Float64("snapshotMs", snapshotMs),

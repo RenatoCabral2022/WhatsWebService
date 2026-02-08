@@ -14,5 +14,5 @@ RUN go mod tidy && CGO_ENABLED=1 GOOS=linux go build -tags nolibopusfile -o /bin
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates opus
 COPY --from=builder /bin/gateway /bin/gateway
-EXPOSE 9090 9091
+EXPOSE 9090 9091 9092
 ENTRYPOINT ["/bin/gateway"]

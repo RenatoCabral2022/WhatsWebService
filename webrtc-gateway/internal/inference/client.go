@@ -10,6 +10,17 @@ import (
 	whatsv1 "github.com/RenatoCabral2022/WhatsWebService/gen/go/whats/v1"
 )
 
+// InferenceClient defines the interface for inference service calls.
+// Extracted for testability (mock injection in soak tests).
+type InferenceClient interface {
+	Transcribe(ctx context.Context, audio []byte, sessionID, actionID, languageHint, task string) (*whatsv1.TranscribeResponse, error)
+	SynthesizeStream(ctx context.Context, text, sessionID, actionID, voice, language string, speed float32) (<-chan []byte, <-chan error)
+	Close()
+}
+
+// Verify Client implements InferenceClient at compile time.
+var _ InferenceClient = (*Client)(nil)
+
 // Client provides gRPC connections to the ASR and TTS inference services.
 type Client struct {
 	asrConn   *grpc.ClientConn

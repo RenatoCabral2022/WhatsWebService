@@ -34,3 +34,13 @@ func (e *Encoder) Encode(pcm []int16) ([]byte, error) {
 	}
 	return buf[:n], nil
 }
+
+// EncodeInto encodes into a caller-provided buffer, avoiding allocation.
+// Returns the used portion of buf.
+func (e *Encoder) EncodeInto(pcm []int16, buf []byte) ([]byte, error) {
+	n, err := e.enc.Encode(pcm, buf)
+	if err != nil {
+		return nil, err
+	}
+	return buf[:n], nil
+}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/audio"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/datachannel"
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/metrics"
 	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/ringbuffer"
 )
 
@@ -77,8 +78,8 @@ func (s *Session) SetRouter(r *datachannel.Router) {
 
 // TryStartAction attempts to claim the session for an action.
 // If another action is running, it cancels it first (auto-cancel-and-replace).
-// Returns a context that will be cancelled if the action is superseded or session stops.
-func (s *Session) TryStartAction(actionID string) context.Context {
+// Returns a context that will be cancelled if the action is superseded, times out, or session stops.
+func (s *Session) TryStartAction(actionID string, timeout time.Duration) context.Context {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -87,7 +88,7 @@ func (s *Session) TryStartAction(actionID string) context.Context {
 		s.actionCancel()
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	s.activeAction = actionID
 	s.actionCancel = cancel
 	return ctx
@@ -98,6 +99,9 @@ func (s *Session) FinishAction(actionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.activeAction == actionID {
+		if s.actionCancel != nil {
+			s.actionCancel() // release timeout resources
+		}
 		s.activeAction = ""
 		s.actionCancel = nil
 	}
@@ -119,6 +123,12 @@ func (s *Session) PlayPCMStream(ctx context.Context, chunks <-chan []byte) error
 	// 320 samples at 16kHz = 20ms (one Opus frame after upsample to 960 at 48kHz)
 	samplesPerFrame16k := audio.SamplesPerFrame / 3
 
+	// Pre-allocate upsample buffer (reused across frames, lifetime matches this goroutine)
+	upsampleBuf := make([]int16, audio.SamplesPerFrame)
+
+	// Pre-allocate encode buffer (reused across frames)
+	encodeBuf := make([]byte, 1024)
+
 	var residual []int16
 
 	for {
@@ -135,11 +145,13 @@ func (s *Session) PlayPCMStream(ctx context.Context, chunks <-chan []byte) error
 					for len(residual) < samplesPerFrame16k {
 						residual = append(residual, 0)
 					}
-					frame48k := audio.Upsample16to48(residual[:samplesPerFrame16k])
-					opusData, err := enc.Encode(frame48k)
+					frame48k := audio.Upsample16to48Into(residual[:samplesPerFrame16k], upsampleBuf)
+					opusData, err := enc.EncodeInto(frame48k, encodeBuf)
 					if err == nil {
+						sampleData := make([]byte, len(opusData))
+						copy(sampleData, opusData)
 						track.WriteSample(media.Sample{
-							Data:     opusData,
+							Data:     sampleData,
 							Duration: frameDuration,
 						})
 					}
@@ -158,15 +170,20 @@ func (s *Session) PlayPCMStream(ctx context.Context, chunks <-chan []byte) error
 				frame16k := samples16k[:samplesPerFrame16k]
 				samples16k = samples16k[samplesPerFrame16k:]
 
-				frame48k := audio.Upsample16to48(frame16k)
-				opusData, err := enc.Encode(frame48k)
+				frame48k := audio.Upsample16to48Into(frame16k, upsampleBuf)
+				opusData, err := enc.EncodeInto(frame48k, encodeBuf)
 				if err != nil {
 					s.logger.Warn("opus encode failed in stream", zap.Error(err))
+					metrics.EncodeErrorsTotal.Inc()
 					continue
 				}
 
+				// Copy for WriteSample (pion may retain the slice)
+				sampleData := make([]byte, len(opusData))
+				copy(sampleData, opusData)
+
 				if err := track.WriteSample(media.Sample{
-					Data:     opusData,
+					Data:     sampleData,
 					Duration: frameDuration,
 				}); err != nil {
 					return fmt.Errorf("write sample: %w", err)
@@ -195,20 +212,29 @@ func (s *Session) HandleInboundRTP(seqNum uint16, opusData []byte) {
 		return
 	}
 
+	metrics.RTPPacketsTotal.Inc()
+
+	// Acquire pooled buffers for the decode→downsample→bytes pipeline
+	bufs := audio.AcquireInboundBuffers()
+	defer audio.ReleaseInboundBuffers(bufs)
+
 	// Detect gaps in RTP sequence numbers for PLC
 	if s.seqNumInit {
 		expected := s.lastSeqNum + 1
 		if seqNum != expected {
 			gap := int(seqNum - expected)
 			if gap > 0 && gap < 100 {
+				metrics.RTPGapsTotal.Inc()
 				for i := 0; i < gap; i++ {
 					plc, err := dec.DecodePLC(audio.OpusSampleRate * audio.FrameDurationMs / 1000)
 					if err != nil {
 						s.logger.Warn("PLC decode failed", zap.Error(err))
+						metrics.DecodeErrorsTotal.Inc()
 						continue
 					}
-					down := audio.Downsample48to16(plc)
-					s.RingBuffer.Write(audio.Int16ToBytes(down))
+					down := audio.Downsample48to16Into(plc, bufs.DownsampleBuf)
+					pcmBytes := audio.Int16ToBytesInto(down, bufs.BytesBuf)
+					s.RingBuffer.Write(pcmBytes)
 				}
 			}
 		}
@@ -216,16 +242,19 @@ func (s *Session) HandleInboundRTP(seqNum uint16, opusData []byte) {
 	s.lastSeqNum = seqNum
 	s.seqNumInit = true
 
-	// Decode real Opus frame
-	pcm48, err := dec.Decode(opusData)
+	// Decode real Opus frame into pooled buffer
+	n, err := dec.DecodeInto(opusData, bufs.DecodeBuf)
 	if err != nil {
 		s.logger.Warn("opus decode failed", zap.Error(err))
+		metrics.DecodeErrorsTotal.Inc()
 		return
 	}
+	pcm48 := bufs.DecodeBuf[:n]
 
 	// Downsample 48kHz → 16kHz and write to ring buffer
-	pcm16 := audio.Downsample48to16(pcm48)
-	s.RingBuffer.Write(audio.Int16ToBytes(pcm16))
+	pcm16 := audio.Downsample48to16Into(pcm48, bufs.DownsampleBuf)
+	pcmBytes := audio.Int16ToBytesInto(pcm16, bufs.BytesBuf)
+	s.RingBuffer.Write(pcmBytes)
 }
 
 // PlayTestTone generates a sine wave, encodes it to Opus, and writes it to the outbound track.
@@ -325,4 +354,3 @@ func (s *Session) Stop() {
 	}
 	s.logger.Info("session stopped")
 }
-

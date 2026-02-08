@@ -32,6 +32,12 @@ func (d *Decoder) Decode(opusData []byte) ([]int16, error) {
 	return pcm[:n], nil
 }
 
+// DecodeInto decodes Opus into a caller-provided buffer, avoiding allocation.
+// Returns the number of samples decoded.
+func (d *Decoder) DecodeInto(opusData []byte, pcm []int16) (int, error) {
+	return d.dec.Decode(opusData, pcm)
+}
+
 // DecodePLC performs packet loss concealment for a missing frame.
 func (d *Decoder) DecodePLC(expectedSamples int) ([]int16, error) {
 	pcm := make([]int16, expectedSamples)

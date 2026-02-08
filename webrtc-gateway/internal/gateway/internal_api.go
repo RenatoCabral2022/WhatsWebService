@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+
+	"github.com/RenatoCabral2022/WhatsWebService/webrtc-gateway/internal/metrics"
 )
 
 type createSessionRequest struct {
@@ -48,6 +50,16 @@ func (gw *Gateway) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.Unmarshal(body, &req); err != nil || req.SessionID == "" {
 		http.Error(w, "invalid request: sessionId required", http.StatusBadRequest)
+		return
+	}
+
+	// Enforce session cap
+	if count := gw.SessionCount(); count >= gw.cfg.MaxSessions {
+		gw.logger.Warn("session cap reached", zap.Int("current", count), zap.Int("max", gw.cfg.MaxSessions))
+		metrics.SessionsRejectedTotal.Inc()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{"error": "max sessions reached"})
 		return
 	}
 
