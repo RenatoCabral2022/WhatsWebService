@@ -28,7 +28,11 @@ message TranscribeRequest {
   string language_hint = 5;
   // Task: "transcribe" (default) or "translate" (to English via Whisper).
   // If empty, defaults to "transcribe".
+  // Deprecated: use target_language instead for multi-target translation.
   string task = 6;
+  // Target language for translation (BCP-47, e.g., "pt-BR", "en", "es").
+  // If empty or same as detected source language, no translation is performed.
+  string target_language = 7;
 }
 
 // TranscribeResponse contains the transcription result.
@@ -41,6 +45,12 @@ message TranscribeResponse {
   repeated Segment segments = 3;
   // Inference duration in milliseconds.
   int32 inference_duration_ms = 4;
+  // The translated text (empty if no translation was requested or source == target).
+  string translated_text = 5;
+  // The target language that was requested (BCP-47). Empty if no translation.
+  string target_language = 6;
+  // Translation duration in milliseconds (0 if no translation).
+  int32 translate_duration_ms = 7;
 }
 
 // Segment is a time-aligned piece of the transcription.

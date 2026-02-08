@@ -18,9 +18,9 @@ def serve():
     """Start the TTS gRPC server."""
     cfg = TTSConfig()
 
-    # Load model at startup (not in request path)
+    # Load all voice models at startup (not in request path)
     tts_service = TTSService(
-        model_path=cfg.model_path,
+        models_dir=cfg.models_dir,
         device=cfg.device,
     )
 
@@ -29,9 +29,9 @@ def serve():
 
     server.add_insecure_port(f"[::]:{cfg.grpc_port}")
     logger.info(
-        "TTS server starting on port %d (model=%s, device=%s)",
+        "TTS server starting on port %d (models_dir=%s, device=%s)",
         cfg.grpc_port,
-        cfg.model_path,
+        cfg.models_dir,
         cfg.device,
     )
     server.start()

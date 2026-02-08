@@ -29,10 +29,10 @@ func Load() *Config {
 		MetricsAddr:             getEnv("METRICS_ADDR", ":9092"),
 		ASRAddr:                 getEnv("ASR_ADDR", "localhost:50051"),
 		TTSAddr:                 getEnv("TTS_ADDR", "localhost:50052"),
-		RingBufferSec:           30,
+		RingBufferSec:           getEnvInt("RING_BUFFER_SEC", 60),
 		STUNServers:             getEnvList("STUN_SERVERS", []string{"stun:stun.l.google.com:19302"}),
 		MaxSessions:             getEnvInt("MAX_SESSIONS", 100),
-		MaxLookbackSec:          getEnvInt("MAX_LOOKBACK_SEC", 30),
+		MaxLookbackSec:          getEnvInt("MAX_LOOKBACK_SEC", 60),
 		ActionTimeoutSec:        getEnvInt("ACTION_TIMEOUT_SEC", 60),
 		MaxInferenceConcurrency: getEnvInt("MAX_INFERENCE_CONCURRENCY", 4),
 	}

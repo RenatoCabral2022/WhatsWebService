@@ -15,11 +15,12 @@ class TtsServicer(tts_pb2_grpc.TtsServiceServicer):
 
     def Synthesize(self, request, context):
         logger.info(
-            "Synthesize request: session=%s action=%s text_len=%d voice=%s",
+            "Synthesize request: session=%s action=%s text_len=%d voice=%s language=%s",
             request.session_id,
             request.action_id,
             len(request.text),
             request.voice or "default",
+            request.language or "en",
         )
 
         seq = 0
@@ -27,6 +28,7 @@ class TtsServicer(tts_pb2_grpc.TtsServiceServicer):
             text=request.text,
             voice=request.voice or "default",
             speed=request.speed if request.speed > 0 else 1.0,
+            language=request.language or "en",
         ):
             yield tts_pb2.SynthesizeResponse(
                 chunk=common_pb2.AudioChunk(

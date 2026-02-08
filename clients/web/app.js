@@ -120,9 +120,11 @@ async function connect() {
     }
 }
 
-function enunciate(lookbackSeconds = 5) {
+function enunciate() {
     if (!dc || dc.readyState !== 'open') return;
 
+    const lookbackSeconds = parseInt(document.getElementById('lookback-slider').value, 10);
+    const targetLang = document.getElementById('target-language').value || null;
     const msg = {
         type: 'command.enunciate',
         sessionId: sessionId,
@@ -130,7 +132,7 @@ function enunciate(lookbackSeconds = 5) {
         timestamp: Date.now(),
         payload: {
             lookbackSeconds: lookbackSeconds,
-            targetLanguage: null,
+            targetLanguage: targetLang,
             ttsOptions: { voice: 'default', speed: 1.0 }
         }
     };
@@ -145,7 +147,13 @@ function handleServerMessage(msg) {
             break;
         case 'asr.final':
             document.getElementById('transcript').innerText =
-                `[final] ${msg.payload.text}`;
+                `[${msg.payload.language}] ${msg.payload.text}`;
+            if (msg.payload.translatedText) {
+                document.getElementById('translation').innerText =
+                    `[${msg.payload.targetLanguage}] ${msg.payload.translatedText}`;
+            } else {
+                document.getElementById('translation').innerText = '';
+            }
             break;
         case 'tts.started':
             updateStatus('TTS streaming...');

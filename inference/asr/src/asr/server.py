@@ -18,11 +18,25 @@ def serve():
     """Start the ASR gRPC server."""
     cfg = ASRConfig()
 
-    # Load model at startup (not in request path)
+    # Load translator at startup if enabled (not in request path)
+    translator = None
+    if cfg.translation_enabled:
+        from asr.translator import Translator
+
+        translator = Translator(
+            model_path=cfg.nllb_model_path,
+            device=cfg.nllb_device,
+            compute_type=cfg.nllb_compute_type,
+        )
+    else:
+        logger.info("Translation disabled (TRANSLATION_ENABLED=false)")
+
+    # Load ASR model at startup (not in request path)
     asr_service = ASRService(
         model_size=cfg.model_size,
         device=cfg.device,
         compute_type=cfg.compute_type,
+        translator=translator,
     )
 
     server = grpc.server(

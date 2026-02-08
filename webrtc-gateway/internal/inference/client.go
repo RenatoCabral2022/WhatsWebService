@@ -13,7 +13,7 @@ import (
 // InferenceClient defines the interface for inference service calls.
 // Extracted for testability (mock injection in soak tests).
 type InferenceClient interface {
-	Transcribe(ctx context.Context, audio []byte, sessionID, actionID, languageHint, task string) (*whatsv1.TranscribeResponse, error)
+	Transcribe(ctx context.Context, audio []byte, sessionID, actionID, languageHint, task, targetLanguage string) (*whatsv1.TranscribeResponse, error)
 	SynthesizeStream(ctx context.Context, text, sessionID, actionID, voice, language string, speed float32) (<-chan []byte, <-chan error)
 	Close()
 }
@@ -56,7 +56,7 @@ func NewClient(asrAddr, ttsAddr string) (*Client, error) {
 }
 
 // Transcribe sends audio to the ASR service and returns the transcription.
-func (c *Client) Transcribe(ctx context.Context, audio []byte, sessionID, actionID, languageHint, task string) (*whatsv1.TranscribeResponse, error) {
+func (c *Client) Transcribe(ctx context.Context, audio []byte, sessionID, actionID, languageHint, task, targetLanguage string) (*whatsv1.TranscribeResponse, error) {
 	return c.asrClient.Transcribe(ctx, &whatsv1.TranscribeRequest{
 		Audio: audio,
 		Format: &whatsv1.AudioFormat{
@@ -64,10 +64,11 @@ func (c *Client) Transcribe(ctx context.Context, audio []byte, sessionID, action
 			Channels:   1,
 			Encoding:   whatsv1.AudioEncoding_AUDIO_ENCODING_PCM_S16LE,
 		},
-		SessionId:    sessionID,
-		ActionId:     actionID,
-		LanguageHint: languageHint,
-		Task:         task,
+		SessionId:      sessionID,
+		ActionId:       actionID,
+		LanguageHint:   languageHint,
+		Task:           task,
+		TargetLanguage: targetLanguage,
 	})
 }
 

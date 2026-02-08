@@ -16,7 +16,7 @@ type MockClient struct {
 	TTSChunkSize    int // bytes per chunk (default 3200 = 100ms at 16kHz)
 }
 
-func (m *MockClient) Transcribe(ctx context.Context, audio []byte, sessionID, actionID, languageHint, task string) (*whatsv1.TranscribeResponse, error) {
+func (m *MockClient) Transcribe(ctx context.Context, audio []byte, sessionID, actionID, languageHint, task, targetLanguage string) (*whatsv1.TranscribeResponse, error) {
 	select {
 	case <-time.After(m.TranscribeDelay):
 	case <-ctx.Done():
@@ -26,10 +26,16 @@ func (m *MockClient) Transcribe(ctx context.Context, audio []byte, sessionID, ac
 	if text == "" {
 		text = "hello world"
 	}
-	return &whatsv1.TranscribeResponse{
+	resp := &whatsv1.TranscribeResponse{
 		Text:     text,
 		Language: "en",
-	}, nil
+	}
+	if targetLanguage != "" && targetLanguage != "en" {
+		resp.TranslatedText = "[mock:" + targetLanguage + "] " + text
+		resp.TargetLanguage = targetLanguage
+		resp.TranslateDurationMs = 50
+	}
+	return resp, nil
 }
 
 func (m *MockClient) SynthesizeStream(ctx context.Context, text, sessionID, actionID, voice, language string, speed float32) (<-chan []byte, <-chan error) {

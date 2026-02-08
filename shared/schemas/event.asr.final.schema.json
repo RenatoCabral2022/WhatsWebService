@@ -38,6 +38,18 @@
         "inferenceMs": {
           "type": "integer",
           "description": "ASR inference duration in milliseconds."
+        },
+        "translatedText": {
+          "type": "string",
+          "description": "Translated text (empty if no translation was performed)."
+        },
+        "targetLanguage": {
+          "type": "string",
+          "description": "The target language that was requested (BCP-47)."
+        },
+        "translateMs": {
+          "type": "integer",
+          "description": "Translation duration in milliseconds."
         }
       },
       "additionalProperties": false

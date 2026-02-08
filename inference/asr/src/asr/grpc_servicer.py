@@ -16,11 +16,12 @@ class AsrServicer(asr_pb2_grpc.AsrServiceServicer):
 
     def Transcribe(self, request, context):
         logger.info(
-            "Transcribe request: session=%s action=%s audio_len=%d task=%s",
+            "Transcribe request: session=%s action=%s audio_len=%d task=%s target_lang=%s",
             request.session_id,
             request.action_id,
             len(request.audio),
             request.task or "transcribe",
+            request.target_language or "(none)",
         )
 
         sample_rate = request.format.sample_rate if request.format else 16000
@@ -29,6 +30,7 @@ class AsrServicer(asr_pb2_grpc.AsrServiceServicer):
             sample_rate=sample_rate,
             language=request.language_hint or None,
             task=request.task or "transcribe",
+            target_language=request.target_language or None,
         )
 
         segments = [
@@ -42,11 +44,14 @@ class AsrServicer(asr_pb2_grpc.AsrServiceServicer):
         ]
 
         logger.info(
-            "Transcribe result: text_len=%d language=%s segments=%d inference_ms=%d",
+            "Transcribe result: text_len=%d language=%s segments=%d inference_ms=%d"
+            " translated=%s translate_ms=%d",
             len(result["text"]),
             result["language"],
             len(segments),
             result["inference_duration_ms"],
+            bool(result.get("translated_text")),
+            result.get("translate_duration_ms", 0),
         )
 
         return asr_pb2.TranscribeResponse(
@@ -54,4 +59,7 @@ class AsrServicer(asr_pb2_grpc.AsrServiceServicer):
             language=result["language"],
             segments=segments,
             inference_duration_ms=result["inference_duration_ms"],
+            translated_text=result.get("translated_text", ""),
+            target_language=result.get("target_language", ""),
+            translate_duration_ms=result.get("translate_duration_ms", 0),
         )

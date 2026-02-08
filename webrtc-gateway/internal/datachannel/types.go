@@ -26,10 +26,13 @@ type TTSOptions struct {
 
 // EventAsrFinal is the payload for asr.final events.
 type EventAsrFinal struct {
-	Text        string    `json:"text"`
-	Language    string    `json:"language"`
-	Segments    []Segment `json:"segments,omitempty"`
-	InferenceMs int      `json:"inferenceMs,omitempty"`
+	Text           string    `json:"text"`
+	Language       string    `json:"language"`
+	TranslatedText string   `json:"translatedText,omitempty"`
+	TargetLanguage string   `json:"targetLanguage,omitempty"`
+	Segments       []Segment `json:"segments,omitempty"`
+	InferenceMs    int       `json:"inferenceMs,omitempty"`
+	TranslateMs    int       `json:"translateMs,omitempty"`
 }
 
 // Segment is a time-aligned piece of transcription.

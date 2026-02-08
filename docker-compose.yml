@@ -29,7 +29,8 @@ services:
       - MAX_SESSIONS=100
       - MAX_INFERENCE_CONCURRENCY=4
       - ACTION_TIMEOUT_SEC=60
-      - MAX_LOOKBACK_SEC=30
+      - MAX_LOOKBACK_SEC=60
+      - RING_BUFFER_SEC=60
     depends_on:
       - asr
       - tts
@@ -51,11 +52,14 @@ services:
       - WHISPER_MODEL_SIZE=base
       - WHISPER_DEVICE=cpu
       - WHISPER_COMPUTE_TYPE=int8
+      - TRANSLATION_ENABLED=true
+      - NLLB_MODEL_PATH=/app/models/nllb-200-distilled-600M-ct2-int8
+      - TRANSLATE_TIMEOUT_MS=250
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 4G
           cpus: "2"
     # For GPU support, uncomment:
     # deploy:
@@ -74,13 +78,13 @@ services:
       - "50052:50052"
     environment:
       - GRPC_PORT=50052
-      - TTS_MODEL_PATH=/app/models/en_US-lessac-medium.onnx
+      - TTS_MODELS_DIR=/app/models
       - TTS_DEVICE=cpu
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 2G
           cpus: "2"
 
   web-client:

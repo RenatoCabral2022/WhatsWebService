@@ -402,16 +402,15 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		return
 	}
 
-	// 4. Determine ASR task
+	// 4. Determine ASR parameters
+	// Always transcribe — NLLB handles translation, not Whisper.
 	task := "transcribe"
 	languageHint := ""
-	if cmd.TargetLanguage != "" {
-		task = "translate"
-	}
+	targetLanguage := cmd.TargetLanguage
 
-	// 5. Call ASR
+	// 5. Call ASR (+ optional translation via NLLB inside ASR service)
 	asrStart := time.Now()
-	asrResp, err := gw.inferenceClient.Transcribe(ctx, pcm, sessionID, actionID, languageHint, task)
+	asrResp, err := gw.inferenceClient.Transcribe(ctx, pcm, sessionID, actionID, languageHint, task, targetLanguage)
 	// Return snapshot buffer to pool after ASR completes (pcm shares backing array)
 	gw.snapshotPool.Put(bufPtr)
 
@@ -448,10 +447,13 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		})
 	}
 	asrPayload, _ := json.Marshal(datachannel.EventAsrFinal{
-		Text:        asrResp.Text,
-		Language:    asrResp.Language,
-		Segments:    segments,
-		InferenceMs: int(asrResp.InferenceDurationMs),
+		Text:           asrResp.Text,
+		Language:       asrResp.Language,
+		TranslatedText: asrResp.TranslatedText,
+		TargetLanguage: asrResp.TargetLanguage,
+		Segments:       segments,
+		InferenceMs:    int(asrResp.InferenceDurationMs),
+		TranslateMs:    int(asrResp.TranslateDurationMs),
 	})
 	sess.SendDataChannelMessage(datachannel.Envelope{
 		Type:      "asr.final",
@@ -464,6 +466,15 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	var ttsFirstChunkMs float64
 
 	if asrResp.Text != "" {
+		// Determine text and language for TTS.
+		// If translation produced a result, speak the translated text with the target language voice.
+		ttsText := asrResp.Text
+		ttsLang := asrResp.Language
+		if asrResp.TranslatedText != "" {
+			ttsText = asrResp.TranslatedText
+			ttsLang = asrResp.TargetLanguage
+		}
+
 		// Send tts.started event
 		sess.SendDataChannelMessage(datachannel.Envelope{
 			Type:      "tts.started",
@@ -483,12 +494,8 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		if speed <= 0 {
 			speed = 1.0
 		}
-		ttsLang := asrResp.Language
-		if cmd.TargetLanguage != "" {
-			ttsLang = cmd.TargetLanguage
-		}
 
-		rawChunks, errs := gw.inferenceClient.SynthesizeStream(ctx, asrResp.Text,
+		rawChunks, errs := gw.inferenceClient.SynthesizeStream(ctx, ttsText,
 			sessionID, actionID, voice, ttsLang, speed)
 
 		// Proxy channel to measure first-chunk latency
@@ -551,10 +558,12 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	}
 
 	// 7. Send latency metrics + record Prometheus histograms
+	translateMs := float64(asrResp.TranslateDurationMs)
 	totalMs := float64(time.Since(start).Milliseconds())
 	latencyEvt := datachannel.EventMetricsLatency{
 		SnapshotMs:      snapshotMs,
 		AsrMs:           asrMs,
+		TranslateMs:     translateMs,
 		TtsFirstChunkMs: ttsFirstChunkMs,
 		TotalMs:         totalMs,
 	}
@@ -571,6 +580,9 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	metrics.ActionLatency.WithLabelValues("total").Observe(totalMs)
 	metrics.ActionLatency.WithLabelValues("snapshot").Observe(snapshotMs)
 	metrics.ActionLatency.WithLabelValues("asr").Observe(asrMs)
+	if translateMs > 0 {
+		metrics.ActionLatency.WithLabelValues("translate").Observe(translateMs)
+	}
 	if ttsFirstChunkMs > 0 {
 		metrics.ActionLatency.WithLabelValues("tts_first_chunk").Observe(ttsFirstChunkMs)
 	}
@@ -578,6 +590,7 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	logger.Info("enunciate complete",
 		zap.Float64("snapshotMs", snapshotMs),
 		zap.Float64("asrMs", asrMs),
+		zap.Float64("translateMs", translateMs),
 		zap.Float64("ttsFirstChunkMs", ttsFirstChunkMs),
 		zap.Float64("totalMs", totalMs),
 	)
