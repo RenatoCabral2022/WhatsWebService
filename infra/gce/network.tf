@@ -24,14 +24,14 @@ resource "google_compute_firewall" "allow_ssh" {
   target_tags   = ["whats-vm"]
 }
 
-# Web client (nginx on port 80)
+# Web client (nginx on port 80 + 443)
 resource "google_compute_firewall" "allow_http" {
   name    = "whats-allow-http"
   network = google_compute_network.whats.name
 
   allow {
     protocol = "tcp"
-    ports    = ["80"]
+    ports    = ["80", "443"]
   }
 
   source_ranges = ["0.0.0.0/0"]

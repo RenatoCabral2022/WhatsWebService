@@ -59,7 +59,20 @@ cd "$REPO_DIR"
 echo "Repo cloned. Contents:"
 ls -la
 
-# 3. Generate protobuf stubs (gen/ is gitignored)
+# 3. Generate self-signed TLS certificate (for HTTPS / getUserMedia)
+CERT_DIR="/opt/whats-certs"
+if [ ! -f "$CERT_DIR/cert.pem" ]; then
+  echo "Generating self-signed TLS certificate..."
+  mkdir -p "$CERT_DIR"
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+    -keyout "$CERT_DIR/key.pem" \
+    -out "$CERT_DIR/cert.pem" \
+    -subj "/CN=${public_ip}" \
+    -addext "subjectAltName=IP:${public_ip}"
+  echo "TLS certificate generated."
+fi
+
+# 4. Generate protobuf stubs (gen/ is gitignored)
 echo "Running make proto (Docker-based, may pull images)..."
 make proto
 echo "Proto generation complete. gen/ contents:"

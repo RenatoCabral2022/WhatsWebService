@@ -31,6 +31,8 @@ services:
   web-client:
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./clients/web:/usr/share/nginx/html:ro
       - ./infra/gce/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/whats-certs:/etc/nginx/certs:ro
