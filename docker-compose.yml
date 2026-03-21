@@ -50,7 +50,7 @@ services:
       - "50051:50051"
     environment:
       - GRPC_PORT=50051
-      - WHISPER_MODEL_SIZE=base
+      - WHISPER_MODEL_SIZE=medium
       - WHISPER_DEVICE=cpu
       - WHISPER_COMPUTE_TYPE=int8
       - TRANSLATION_ENABLED=true
@@ -60,7 +60,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 6G
           cpus: "2"
     # For GPU support, uncomment:
     # deploy:

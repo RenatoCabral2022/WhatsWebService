@@ -77,3 +77,31 @@ func (h *Handlers) GetIngestStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(gwResp.StatusCode)
 	io.Copy(w, gwResp.Body)
 }
+
+// PostAudioUpload handles POST /v1/sessions/{sessionId}/audio/upload.
+// Proxies raw audio bytes to the gateway for decoding and ring buffer write.
+func (h *Handlers) PostAudioUpload(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionId")
+
+	// Proxy the binary body directly to the gateway, forwarding query params
+	gwURL := fmt.Sprintf("%s/internal/sessions/%s/audio/upload", h.GatewayBaseURL, sessionID)
+	if r.URL.RawQuery != "" {
+		gwURL += "?" + r.URL.RawQuery
+	}
+	gwReq, _ := http.NewRequestWithContext(r.Context(), http.MethodPost,
+		gwURL,
+		r.Body,
+	)
+	gwReq.Header.Set("Content-Type", "application/octet-stream")
+
+	gwResp, err := h.httpClient.Do(gwReq)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"gateway unavailable: %s"}`, err), http.StatusBadGateway)
+		return
+	}
+	defer gwResp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(gwResp.StatusCode)
+	io.Copy(w, gwResp.Body)
+}

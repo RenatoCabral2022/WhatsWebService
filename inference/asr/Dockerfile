@@ -2,6 +2,7 @@ FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -24,6 +25,7 @@ RUN pip install --no-cache-dir huggingface_hub && \
 
 ENV PYTHONPATH=/app/gen/python
 ENV NLLB_MODEL_PATH=/app/models/nllb-200-distilled-600M-ct2-int8
+ENV VOCAL_SEPARATION_ENABLED=true
 
 EXPOSE 50051
 CMD ["python", "-m", "asr.server"]

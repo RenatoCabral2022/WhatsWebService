@@ -10,11 +10,11 @@ RUN pip install --no-cache-dir uv
 
 # Download piper voice models at build time (cached in Docker layer)
 RUN mkdir -p /app/models && \
-    # English (US)
-    wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx" \
-      -O /app/models/en_US-lessac-medium.onnx && \
-    wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json" \
-      -O /app/models/en_US-lessac-medium.onnx.json && \
+    # English (US) – HIGH quality for best pronunciation
+    wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/high/en_US-lessac-high.onnx" \
+      -O /app/models/en_US-lessac-high.onnx && \
+    wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/lessac/high/en_US-lessac-high.onnx.json" \
+      -O /app/models/en_US-lessac-high.onnx.json && \
     # Portuguese (Brazil)
     wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx" \
       -O /app/models/pt_BR-faber-medium.onnx && \

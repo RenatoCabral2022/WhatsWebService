@@ -1,10 +1,12 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -146,6 +148,12 @@ func (gw *Gateway) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audio upload route (binary MP3 → decode → ring buffer)
+	if suffix == "audio/upload" && r.Method == http.MethodPost {
+		gw.handleAudioUpload(w, r, sessionID)
+		return
+	}
+
 	http.Error(w, "not found", http.StatusNotFound)
 }
 
@@ -283,5 +291,127 @@ func (gw *Gateway) handleIngestStatus(w http.ResponseWriter, r *http.Request, se
 		SecondsBuffered: status.SecondsBuffered,
 		BytesRead:       status.BytesRead,
 		LastError:       status.LastError,
+	})
+}
+
+// handleAudioUpload accepts raw audio bytes (MP3, WAV, etc.), decodes to
+// PCM s16le 16kHz mono via ffmpeg, and writes the result to the ring buffer.
+// This allows mobile clients to upload local audio for server-side enunciation.
+//
+// POST /internal/sessions/{id}/audio/upload?offsetSec=7&durationSec=30
+// Content-Type: application/octet-stream
+// Body: raw audio bytes
+//
+// Query params (optional):
+//   - offsetSec: start position in seconds (for seeking into the file)
+//   - durationSec: max duration in seconds to decode
+//
+// Response: {"bytesWritten": N, "secondsBuffered": N.N}
+func (gw *Gateway) handleAudioUpload(w http.ResponseWriter, r *http.Request, sessionID string) {
+	const maxUploadSize = 50 * 1024 * 1024 // 50 MB
+
+	gw.mu.RLock()
+	sess, ok := gw.sessions[sessionID]
+	gw.mu.RUnlock()
+	if !ok {
+		http.Error(w, `{"error":"session not found"}`, http.StatusNotFound)
+		return
+	}
+
+	// Parse optional query params for segment extraction
+	offsetSec := r.URL.Query().Get("offsetSec")
+	durationSec := r.URL.Query().Get("durationSec")
+
+	// Read body with size limit
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxUploadSize+1))
+	if err != nil {
+		http.Error(w, `{"error":"read body failed"}`, http.StatusBadRequest)
+		return
+	}
+	if len(body) > maxUploadSize {
+		http.Error(w, `{"error":"upload too large, max 10MB"}`, http.StatusRequestEntityTooLarge)
+		return
+	}
+	if len(body) == 0 {
+		http.Error(w, `{"error":"empty body"}`, http.StatusBadRequest)
+		return
+	}
+
+	gw.logger.Info("audio upload received",
+		zap.String("session", sessionID),
+		zap.Int("bytes", len(body)),
+		zap.String("offsetSec", offsetSec),
+		zap.String("durationSec", durationSec),
+	)
+
+	// Decode audio → PCM s16le 16kHz mono via ffmpeg pipe
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	// Build ffmpeg args — optionally seek and limit duration
+	args := []string{
+		"-nostdin",
+		"-hide_banner", "-loglevel", "error",
+	}
+	if offsetSec != "" {
+		args = append(args, "-ss", offsetSec)
+	}
+	args = append(args, "-i", "pipe:0")
+	if durationSec != "" {
+		args = append(args, "-t", durationSec)
+	}
+	args = append(args,
+		"-vn",
+		"-ac", "1",
+		"-ar", "16000",
+		"-f", "s16le",
+		"pipe:1",
+	)
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd.Stdin = bytes.NewReader(body)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	pcmData, err := cmd.Output()
+	if err != nil {
+		errMsg := stderr.String()
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		gw.logger.Warn("audio decode failed",
+			zap.String("session", sessionID),
+			zap.String("error", errMsg),
+		)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(map[string]string{"error": "audio decode failed: " + errMsg})
+		return
+	}
+
+	if len(pcmData) == 0 {
+		http.Error(w, `{"error":"ffmpeg produced no output"}`, http.StatusUnprocessableEntity)
+		return
+	}
+
+	// Write PCM to ring buffer
+	sess.RingBuffer.Write(pcmData)
+
+	secondsBuffered := sess.RingBuffer.Available()
+	pcmSeconds := float64(len(pcmData)) / 32000.0 // 16kHz * 2 bytes/sample
+
+	gw.logger.Info("audio upload decoded and buffered",
+		zap.String("session", sessionID),
+		zap.Int("pcmBytes", len(pcmData)),
+		zap.Float64("pcmSeconds", pcmSeconds),
+		zap.Float64("bufferedSeconds", secondsBuffered),
+	)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"bytesWritten":    len(pcmData),
+		"secondsBuffered": secondsBuffered,
+		"audioSeconds":    pcmSeconds,
 	})
 }

@@ -342,6 +342,7 @@ func (gw *Gateway) makeEnunciateHandler(sess *session.Session) datachannel.Handl
 }
 
 // executeEnunciate runs the full enunciate pipeline: snapshot → ASR → TTS → playback.
+// When cmd.Text is provided (Spotify mode), skips snapshot + ASR and uses text directly.
 func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 	sessionID, actionID string, cmd datachannel.CommandEnunciate) {
 
@@ -356,6 +357,210 @@ func (gw *Gateway) executeEnunciate(ctx context.Context, sess *session.Session,
 		zap.String("action", actionID),
 	)
 
+	// ── Text-only mode (Spotify lyrics) ─────────────────────────
+	// Skip ring buffer + ASR when the client provides text directly.
+	if cmd.Text != "" {
+		logger.Info("text-only enunciate (Spotify mode)",
+			zap.Int("text_len", len(cmd.Text)),
+			zap.String("sourceLanguage", cmd.SourceLanguage),
+			zap.String("targetLanguage", cmd.TargetLanguage),
+		)
+
+		// Acquire inference semaphore
+		select {
+		case gw.inferenceSem <- struct{}{}:
+			metrics.InferenceSemUsed.Inc()
+		default:
+			logger.Warn("inference pool saturated")
+			gw.sendError(sess, sessionID, actionID, "RATE_LIMITED", "inference busy, try again")
+			metrics.ActionsTotal.WithLabelValues("rate_limited").Inc()
+			return
+		}
+		defer func() {
+			<-gw.inferenceSem
+			metrics.InferenceSemUsed.Dec()
+		}()
+
+		// Use the provided text directly — call ASR service for translation only.
+		// Encode source text in language_hint field using format "source_text:<lang>:<text>"
+		// (no proto changes needed — the Python servicer detects this prefix).
+		asrText := cmd.Text
+		asrLanguage := cmd.SourceLanguage
+		if asrLanguage == "" {
+			asrLanguage = "auto"
+		}
+		translatedText := ""
+		targetLanguage := cmd.TargetLanguage
+
+		// If translation is requested, call ASR service with source text encoded in language_hint
+		if targetLanguage != "" && targetLanguage != asrLanguage {
+			asrStart := time.Now()
+			// Encode: "source_text:<source_lang>:<lyrics_text>"
+			languageHintWithText := fmt.Sprintf("source_text:%s:%s", asrLanguage, asrText)
+			asrResp, err := gw.inferenceClient.Transcribe(ctx, nil, sessionID, actionID, languageHintWithText, "transcribe", targetLanguage)
+			if err == nil && asrResp != nil && asrResp.TranslatedText != "" {
+				translatedText = asrResp.TranslatedText
+				logger.Info("text-only translation succeeded",
+					zap.Int("translated_len", len(translatedText)),
+				)
+			} else if err != nil {
+				// Translation failed — fall through, we'll just TTS the original text
+				logger.Warn("translation failed for text-only mode, using original text", zap.Error(err))
+			}
+			asrMs := float64(time.Since(asrStart).Microseconds()) / 1000.0
+			logger.Info("text-only translation", zap.Float64("translateMs", asrMs))
+		}
+
+		// Emit asr.final event with the lyrics text
+		asrPayload, _ := json.Marshal(datachannel.EventAsrFinal{
+			Text:           asrText,
+			Language:       asrLanguage,
+			TranslatedText: translatedText,
+			TargetLanguage: targetLanguage,
+		})
+		sess.SendDataChannelMessage(datachannel.Envelope{
+			Type:      "asr.final",
+			SessionID: sessionID,
+			ActionID:  actionID,
+			Timestamp: time.Now().UnixMilli(),
+			Payload:   json.RawMessage(asrPayload),
+		})
+
+		// Determine TTS text and language
+		ttsText := asrText
+		ttsLang := asrLanguage
+		if translatedText != "" {
+			ttsText = translatedText
+			ttsLang = targetLanguage
+		}
+
+		if ttsText == "" {
+			logger.Warn("empty text for TTS, skipping")
+			metrics.ActionsTotal.WithLabelValues("empty_text").Inc()
+			return
+		}
+
+		// TTS streaming (inline — same logic as audio-based path)
+		ttsStart := time.Now()
+		voice := cmd.TTSOptions.Voice
+		if voice == "" {
+			voice = "default"
+		}
+		speed := float32(cmd.TTSOptions.Speed)
+		if speed <= 0 {
+			speed = 1.0
+		}
+
+		rawChunks, errs := gw.inferenceClient.SynthesizeStream(ctx, ttsText,
+			sessionID, actionID, voice, ttsLang, speed)
+
+		var allChunks [][]byte
+		var totalPCMBytes int
+		var ttsFirstChunkMs float64
+		first := true
+		for chunk := range rawChunks {
+			if first {
+				ttsFirstChunkMs = float64(time.Since(ttsStart).Microseconds()) / 1000.0
+				first = false
+			}
+			allChunks = append(allChunks, chunk)
+			totalPCMBytes += len(chunk)
+			if ctx.Err() != nil {
+				break
+			}
+		}
+
+		if totalPCMBytes > 0 {
+			totalDurationMs := float64(totalPCMBytes) / 32.0
+			marks := calculateWordMarks(ttsText, totalDurationMs)
+			marksPayload, _ := json.Marshal(datachannel.EventTtsMarks{
+				Text:       ttsText,
+				Words:      marks,
+				DurationMs: totalDurationMs,
+			})
+			sess.SendDataChannelMessage(datachannel.Envelope{
+				Type:      "tts.marks",
+				SessionID: sessionID,
+				ActionID:  actionID,
+				Timestamp: time.Now().UnixMilli(),
+				Payload:   json.RawMessage(marksPayload),
+			})
+		}
+
+		sess.SendDataChannelMessage(datachannel.Envelope{
+			Type:      "tts.started",
+			SessionID: sessionID,
+			ActionID:  actionID,
+			Timestamp: time.Now().UnixMilli(),
+			Payload:   json.RawMessage(`{"voice":"default"}`),
+		})
+
+		bufferedCh := make(chan []byte, len(allChunks))
+		for _, chunk := range allChunks {
+			bufferedCh <- chunk
+		}
+		close(bufferedCh)
+
+		if playErr := sess.PlayPCMStream(ctx, bufferedCh); playErr != nil {
+			if ctx.Err() != nil {
+				logger.Info("text-only enunciate cancelled during TTS playback")
+				metrics.ActionsTotal.WithLabelValues("cancelled").Inc()
+				return
+			}
+			logger.Warn("TTS playback error", zap.Error(playErr))
+			metrics.ActionsTotal.WithLabelValues("tts_error").Inc()
+			return
+		}
+
+		select {
+		case err := <-errs:
+			if err != nil {
+				logger.Warn("TTS stream error", zap.Error(err))
+			}
+		default:
+		}
+
+		ttsDuration := time.Since(ttsStart)
+		ttsDonePayload, _ := json.Marshal(datachannel.EventTtsDone{
+			DurationMs: int(ttsDuration.Milliseconds()),
+		})
+		sess.SendDataChannelMessage(datachannel.Envelope{
+			Type:      "tts.done",
+			SessionID: sessionID,
+			ActionID:  actionID,
+			Timestamp: time.Now().UnixMilli(),
+			Payload:   json.RawMessage(ttsDonePayload),
+		})
+
+		// Latency metrics
+		totalMs := float64(time.Since(start).Milliseconds())
+		latencyEvt := datachannel.EventMetricsLatency{
+			TtsFirstChunkMs: ttsFirstChunkMs,
+			TotalMs:         totalMs,
+		}
+		metricsPayload, _ := json.Marshal(latencyEvt)
+		sess.SendDataChannelMessage(datachannel.Envelope{
+			Type:      "metrics.latency",
+			SessionID: sessionID,
+			ActionID:  actionID,
+			Timestamp: time.Now().UnixMilli(),
+			Payload:   json.RawMessage(metricsPayload),
+		})
+
+		metrics.ActionsTotal.WithLabelValues("success").Inc()
+		metrics.ActionLatency.WithLabelValues("total").Observe(totalMs)
+		if ttsFirstChunkMs > 0 {
+			metrics.ActionLatency.WithLabelValues("tts_first_chunk").Observe(ttsFirstChunkMs)
+		}
+
+		logger.Info("text-only enunciate complete",
+			zap.Float64("ttsFirstChunkMs", ttsFirstChunkMs),
+			zap.Float64("totalMs", totalMs),
+		)
+		return
+	}
+
+	// ── Audio-based mode (local MP3) ────────────────────────────
 	// 1. Validate buffer
 	lookback := cmd.LookbackSeconds
 	if lookback <= 0 {

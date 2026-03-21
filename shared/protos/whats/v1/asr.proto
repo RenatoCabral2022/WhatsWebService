@@ -33,6 +33,10 @@ message TranscribeRequest {
   // Target language for translation (BCP-47, e.g., "pt-BR", "en", "es").
   // If empty or same as detected source language, no translation is performed.
   string target_language = 7;
+  // Optional source text for text-only translation (Spotify lyrics mode).
+  // When provided with empty audio, the ASR service skips Whisper and
+  // translates this text directly via NLLB.
+  string source_text = 8;
 }
 
 // TranscribeResponse contains the transcription result.

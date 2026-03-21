@@ -16,6 +16,10 @@ type CommandEnunciate struct {
 	LookbackSeconds int        `json:"lookbackSeconds"`
 	TargetLanguage  string     `json:"targetLanguage,omitempty"`
 	TTSOptions      TTSOptions `json:"ttsOptions,omitempty"`
+	// Text-only mode (Spotify): skip ring buffer + ASR,
+	// go straight to translate → TTS with the provided lyrics text.
+	Text           string `json:"text,omitempty"`
+	SourceLanguage string `json:"sourceLanguage,omitempty"`
 }
 
 // TTSOptions controls text-to-speech synthesis parameters.

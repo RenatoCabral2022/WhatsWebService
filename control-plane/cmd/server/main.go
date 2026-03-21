@@ -46,6 +46,7 @@ func main() {
 				r.Post("/ingest/start", h.PostIngestStart)
 				r.Post("/ingest/stop", h.PostIngestStop)
 				r.Get("/ingest/status", h.GetIngestStatus)
+				r.Post("/audio/upload", h.PostAudioUpload)
 			})
 		})
 	})

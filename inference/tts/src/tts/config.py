@@ -5,12 +5,12 @@ import os
 
 # Language → piper voice model name mapping.
 VOICE_MAP = {
-    "en": "en_US-lessac-medium",
+    "en": "en_US-lessac-high",
     "pt-BR": "pt_BR-faber-medium",
     "pt": "pt_BR-faber-medium",
     "es": "es_MX-ald-medium",
 }
-DEFAULT_VOICE = "en_US-lessac-medium"
+DEFAULT_VOICE = "en_US-lessac-high"
 
 
 class TTSConfig:
