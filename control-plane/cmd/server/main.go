@@ -13,6 +13,7 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/applemusic"
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/config"
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/handler"
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/middleware"
@@ -21,6 +22,24 @@ import (
 func main() {
 	cfg := config.Load()
 	h := handler.NewHandlers(cfg.GatewayInternalURL)
+
+	if cfg.AppleTeamID != "" && cfg.AppleKeyID != "" && len(cfg.ApplePrivateKeyPEM) > 0 {
+		signer, err := applemusic.NewSigner(applemusic.Config{
+			TeamID:        cfg.AppleTeamID,
+			KeyID:         cfg.AppleKeyID,
+			PrivateKeyPEM: cfg.ApplePrivateKeyPEM,
+			TokenTTL:      time.Duration(cfg.AppleTokenTTLSeconds) * time.Second,
+		})
+		if err != nil {
+			log.Fatalf("apple music signer init: %v", err)
+		}
+		cache := applemusic.NewCache(signer, time.Duration(cfg.AppleTokenRefreshBufferSeconds)*time.Second)
+		h = h.WithAppleMusic(cache)
+		log.Printf("apple music enabled: team=%s key=%s ttl=%ds",
+			cfg.AppleTeamID, cfg.AppleKeyID, cfg.AppleTokenTTLSeconds)
+	} else {
+		log.Printf("apple music disabled: credentials not fully configured")
+	}
 
 	r := chi.NewRouter()
 	r.Use(chimw.RealIP)
@@ -48,6 +67,12 @@ func main() {
 				r.Get("/ingest/status", h.GetIngestStatus)
 				r.Post("/audio/upload", h.PostAudioUpload)
 			})
+		})
+
+		r.Route("/music/apple", func(r chi.Router) {
+			// TODO: real session validation; middleware.Auth is a pass-through placeholder today.
+			r.Use(middleware.Auth)
+			r.Get("/developer-token", h.GetAppleDeveloperToken)
 		})
 	})
 

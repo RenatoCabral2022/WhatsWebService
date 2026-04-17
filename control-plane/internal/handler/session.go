@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/applemusic"
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/model"
 )
 
@@ -17,6 +18,10 @@ import (
 type Handlers struct {
 	GatewayBaseURL string
 	httpClient     *http.Client
+
+	// AppleMusic is nil when Apple Music integration is not configured.
+	// When nil, GetAppleDeveloperToken returns 503.
+	AppleMusic *applemusic.Cache
 }
 
 // NewHandlers creates handlers that proxy to the gateway internal API.

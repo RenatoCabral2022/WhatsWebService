@@ -34,3 +34,7 @@ infra/gce/.terraform/
 # Environment
 .env
 .env.local
+
+# Secrets (Apple Music .p8 keys, etc.)
+**/secrets/
+**/*.p8

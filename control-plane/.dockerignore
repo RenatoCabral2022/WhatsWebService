@@ -1,0 +1,33 @@
+# Secrets — must never be baked into the image.
+# Mount at runtime via docker-compose volumes instead.
+secrets/
+*.p8
+*.pem
+*.key
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+bin/
+*.exe
+
+# Tests and coverage
+*.test
+*.out
+coverage.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore

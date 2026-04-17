@@ -163,6 +163,26 @@ paths:
                     type: string
                     enum: [ok]
 
+  /v1/music/apple/developer-token:
+    get:
+      summary: Get a signed Apple MusicKit developer token
+      operationId: getAppleDeveloperToken
+      tags: [music, apple]
+      description: |
+        Returns an ES256 JWT usable with api.music.apple.com.
+        Cached server-side; TTL 30 days. Requires authenticated session (TODO).
+      responses:
+        "200":
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppleDeveloperTokenResponse"
+        "503":
+          description: Apple Music integration not configured on this server
+        "500":
+          description: Internal signing error
+
 components:
   schemas:
     CreateSessionResponse:
@@ -225,3 +245,15 @@ components:
           type: integer
         lastError:
           type: string
+
+    AppleDeveloperTokenResponse:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token:
+          type: string
+          description: ES256-signed JWT (MusicKit developer token)
+        expiresAt:
+          type: integer
+          format: int64
+          description: Unix seconds at which the token expires

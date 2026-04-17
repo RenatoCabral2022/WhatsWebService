@@ -1,0 +1,23 @@
+# Apple Music override — adds MusicKit developer-token signing to control-plane.
+#
+# Usage (dev):
+#   # 1. Put your Apple private key at control-plane/secrets/AuthKey_<KEYID>.p8
+#   # 2. Create a .env file next to this one (see .env.example)
+#   # 3. Start with:
+#   docker compose -f docker-compose.yml -f docker-compose.apple-music.yml up --build
+#
+# The base docker-compose.yml runs without Apple Music configured;
+# this override layers on the env vars and the read-only .p8 mount.
+
+services:
+  control-plane:
+    environment:
+      - APPLE_TEAM_ID=${APPLE_TEAM_ID:?APPLE_TEAM_ID must be set (see .env.example)}
+      - APPLE_KEY_ID=${APPLE_KEY_ID:?APPLE_KEY_ID must be set (see .env.example)}
+      - APPLE_MUSIC_PRIVATE_KEY_FILE=/secrets/apple-music.p8
+      - APPLE_TOKEN_TTL_SECONDS=${APPLE_TOKEN_TTL_SECONDS:-2592000}
+      - APPLE_TOKEN_REFRESH_BUFFER_SECONDS=${APPLE_TOKEN_REFRESH_BUFFER_SECONDS:-86400}
+    volumes:
+      # Read-only mount of the .p8. The host path is resolved relative to
+      # this compose file's directory (WhatsWebService/).
+      - ${APPLE_P8_HOST_PATH:?APPLE_P8_HOST_PATH must be set (see .env.example)}:/secrets/apple-music.p8:ro
