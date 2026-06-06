@@ -12,6 +12,7 @@ import (
 
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/applemusic"
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/model"
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/ttscache"
 )
 
 // Handlers holds dependencies for HTTP handlers.
@@ -22,6 +23,12 @@ type Handlers struct {
 	// AppleMusic is nil when Apple Music integration is not configured.
 	// When nil, GetAppleDeveloperToken returns 503.
 	AppleMusic *applemusic.Cache
+
+	// OpenAI + TTSCache are nil when OpenAI TTS is not configured.
+	// When either is nil, PostTTSEnunciate returns 503.
+	OpenAI   OpenAITTS
+	TTSCache ttscache.Cache
+	TTS      TTSConfig
 }
 
 // NewHandlers creates handlers that proxy to the gateway internal API.
@@ -57,7 +64,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var gwResult struct {
-		SDPOffer   string          `json:"sdpOffer"`
+		SDPOffer   string            `json:"sdpOffer"`
 		ICEServers []model.IceServer `json:"iceServers"`
 	}
 	if err := json.NewDecoder(gwResp.Body).Decode(&gwResult); err != nil {

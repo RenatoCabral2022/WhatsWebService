@@ -17,6 +17,8 @@ import (
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/config"
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/handler"
 	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/middleware"
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/openai"
+	"github.com/RenatoCabral2022/WhatsWebService/control-plane/internal/ttscache"
 )
 
 func main() {
@@ -39,6 +41,29 @@ func main() {
 			cfg.AppleTeamID, cfg.AppleKeyID, cfg.AppleTokenTTLSeconds)
 	} else {
 		log.Printf("apple music disabled: credentials not fully configured")
+	}
+
+	if cfg.OpenAIAPIKey != "" {
+		oaClient, err := openai.NewClient(openai.Config{
+			APIKey:         cfg.OpenAIAPIKey,
+			TranslateModel: cfg.OpenAITranslateModel,
+			TTSModel:       cfg.OpenAITTSModel,
+		})
+		if err != nil {
+			log.Fatalf("openai client init: %v", err)
+		}
+		ttsCache, err := ttscache.NewFS(cfg.TTSCacheDir)
+		if err != nil {
+			log.Fatalf("tts cache init: %v", err)
+		}
+		h = h.WithOpenAI(oaClient, ttsCache, handler.TTSConfig{
+			DefaultVoice:  cfg.OpenAITTSVoice,
+			DefaultFormat: cfg.OpenAITTSFormat,
+		})
+		log.Printf("openai tts enabled: model=%s voice=%s format=%s cache=%s",
+			cfg.OpenAITTSModel, cfg.OpenAITTSVoice, cfg.OpenAITTSFormat, cfg.TTSCacheDir)
+	} else {
+		log.Printf("openai tts disabled: OPENAI_API_KEY not set")
 	}
 
 	r := chi.NewRouter()
@@ -74,6 +99,8 @@ func main() {
 			r.Use(middleware.Auth)
 			r.Get("/developer-token", h.GetAppleDeveloperToken)
 		})
+
+		r.Post("/tts/enunciate", h.PostTTSEnunciate)
 	})
 
 	srv := &http.Server{

@@ -11,6 +11,12 @@ import (
 const (
 	defaultAppleTokenTTLSeconds           = 30 * 24 * 60 * 60 // 30 days
 	defaultAppleTokenRefreshBufferSeconds = 24 * 60 * 60      // 24 hours
+
+	defaultOpenAITTSModel       = "gpt-4o-mini-tts"
+	defaultOpenAITTSVoice       = "nova"
+	defaultOpenAITranslateModel = "gpt-4o-mini"
+	defaultOpenAITTSFormat      = "mp3" // universal-compat default; flip to "opus" later
+	defaultTTSCacheDir          = "/var/cache/whats-tts"
 )
 
 type Config struct {
@@ -25,6 +31,15 @@ type Config struct {
 	ApplePrivateKeyPEM             []byte
 	AppleTokenTTLSeconds           int
 	AppleTokenRefreshBufferSeconds int
+
+	// OpenAI TTS integration. When OpenAIAPIKey is empty, /v1/tts/enunciate
+	// serves 503 and the server still boots.
+	OpenAIAPIKey         string
+	OpenAITTSModel       string
+	OpenAITTSVoice       string
+	OpenAITranslateModel string
+	OpenAITTSFormat      string // "mp3" or "opus"
+	TTSCacheDir          string
 }
 
 func Load() *Config {
@@ -35,10 +50,32 @@ func Load() *Config {
 		AppleKeyID:                     os.Getenv("APPLE_KEY_ID"),
 		AppleTokenTTLSeconds:           getEnvInt("APPLE_TOKEN_TTL_SECONDS", defaultAppleTokenTTLSeconds),
 		AppleTokenRefreshBufferSeconds: getEnvInt("APPLE_TOKEN_REFRESH_BUFFER_SECONDS", defaultAppleTokenRefreshBufferSeconds),
+
+		OpenAIAPIKey:         os.Getenv("OPENAI_API_KEY"),
+		OpenAITTSModel:       getEnv("OPENAI_TTS_MODEL", defaultOpenAITTSModel),
+		OpenAITTSVoice:       getEnv("OPENAI_TTS_VOICE", defaultOpenAITTSVoice),
+		OpenAITranslateModel: getEnv("OPENAI_TRANSLATE_MODEL", defaultOpenAITranslateModel),
+		OpenAITTSFormat:      getEnv("OPENAI_TTS_FORMAT", defaultOpenAITTSFormat),
+		TTSCacheDir:          getEnv("TTS_CACHE_DIR", defaultTTSCacheDir),
 	}
 	cfg.ApplePrivateKeyPEM = loadApplePrivateKey()
 	validateAppleConfig(cfg)
+	validateOpenAIConfig(cfg)
 	return cfg
+}
+
+// validateOpenAIConfig warns when the API key is missing. It never fails
+// startup — the control-plane must boot so WebRTC and Apple Music keep working
+// for the local-file mode.
+func validateOpenAIConfig(cfg *Config) {
+	if cfg.OpenAIAPIKey == "" {
+		log.Printf("config: openai tts disabled — OPENAI_API_KEY not set")
+		return
+	}
+	if cfg.OpenAITTSFormat != "mp3" && cfg.OpenAITTSFormat != "opus" {
+		log.Printf("config: OPENAI_TTS_FORMAT=%q unsupported; falling back to %q", cfg.OpenAITTSFormat, defaultOpenAITTSFormat)
+		cfg.OpenAITTSFormat = defaultOpenAITTSFormat
+	}
 }
 
 // loadApplePrivateKey prefers an inline base64 env (prod) over a file path (dev).

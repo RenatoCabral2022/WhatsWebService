@@ -8,6 +8,15 @@ services:
     environment:
       - PORT=8080
       - GATEWAY_INTERNAL_URL=http://webrtc-gateway:9091
+      # OpenAI TTS (POST /v1/tts/enunciate). Endpoint serves 503 if key unset.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_TTS_MODEL=${OPENAI_TTS_MODEL:-gpt-4o-mini-tts}
+      - OPENAI_TTS_VOICE=${OPENAI_TTS_VOICE:-nova}
+      - OPENAI_TRANSLATE_MODEL=${OPENAI_TRANSLATE_MODEL:-gpt-4o-mini}
+      - OPENAI_TTS_FORMAT=${OPENAI_TTS_FORMAT:-mp3}
+      - TTS_CACHE_DIR=/var/cache/whats-tts
+    volumes:
+      - tts-cache:/var/cache/whats-tts
     depends_on:
       - webrtc-gateway
     restart: unless-stopped
@@ -97,6 +106,9 @@ services:
     depends_on:
       - control-plane
     restart: unless-stopped
+
+volumes:
+  tts-cache:
 
 networks:
   default:
