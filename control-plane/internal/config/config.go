@@ -39,7 +39,12 @@ type Config struct {
 	OpenAITTSVoice       string
 	OpenAITranslateModel string
 	OpenAITTSFormat      string // "mp3" or "opus"
-	TTSCacheDir          string
+
+	// Cache backend selection. When TTSCacheBucket is set, the GCS backend is
+	// used (production / Cloud Functions). Otherwise the filesystem backend
+	// at TTSCacheDir is used (local dev).
+	TTSCacheDir    string
+	TTSCacheBucket string
 }
 
 func Load() *Config {
@@ -57,6 +62,7 @@ func Load() *Config {
 		OpenAITranslateModel: getEnv("OPENAI_TRANSLATE_MODEL", defaultOpenAITranslateModel),
 		OpenAITTSFormat:      getEnv("OPENAI_TTS_FORMAT", defaultOpenAITTSFormat),
 		TTSCacheDir:          getEnv("TTS_CACHE_DIR", defaultTTSCacheDir),
+		TTSCacheBucket:       os.Getenv("TTS_CACHE_BUCKET"),
 	}
 	cfg.ApplePrivateKeyPEM = loadApplePrivateKey()
 	validateAppleConfig(cfg)

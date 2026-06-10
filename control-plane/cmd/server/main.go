@@ -52,16 +52,31 @@ func main() {
 		if err != nil {
 			log.Fatalf("openai client init: %v", err)
 		}
-		ttsCache, err := ttscache.NewFS(cfg.TTSCacheDir)
-		if err != nil {
-			log.Fatalf("tts cache init: %v", err)
+
+		var ttsCache ttscache.Cache
+		var cacheDesc string
+		if cfg.TTSCacheBucket != "" {
+			gcs, gerr := ttscache.NewGCS(context.Background(), cfg.TTSCacheBucket)
+			if gerr != nil {
+				log.Fatalf("tts cache (gcs) init: %v", gerr)
+			}
+			ttsCache = gcs
+			cacheDesc = "gcs://" + cfg.TTSCacheBucket
+		} else {
+			fs, ferr := ttscache.NewFS(cfg.TTSCacheDir)
+			if ferr != nil {
+				log.Fatalf("tts cache (fs) init: %v", ferr)
+			}
+			ttsCache = fs
+			cacheDesc = cfg.TTSCacheDir
 		}
+
 		h = h.WithOpenAI(oaClient, ttsCache, handler.TTSConfig{
 			DefaultVoice:  cfg.OpenAITTSVoice,
 			DefaultFormat: cfg.OpenAITTSFormat,
 		})
 		log.Printf("openai tts enabled: model=%s voice=%s format=%s cache=%s",
-			cfg.OpenAITTSModel, cfg.OpenAITTSVoice, cfg.OpenAITTSFormat, cfg.TTSCacheDir)
+			cfg.OpenAITTSModel, cfg.OpenAITTSVoice, cfg.OpenAITTSFormat, cacheDesc)
 	} else {
 		log.Printf("openai tts disabled: OPENAI_API_KEY not set")
 	}

@@ -1,0 +1,89 @@
+# Cloud Build pipeline: build the control-plane image and deploy to Cloud Run.
+#
+# Trigger this from `gcloud builds submit` or wire it to a Cloud Build trigger
+# on push to main. Substitution variables let the same config target multiple
+# environments without editing the file.
+#
+# Required substitutions (pass via --substitutions or trigger config):
+#   _SERVICE_NAME       (default: whats-control-plane)
+#   _REGION             (default: us-central1)
+#   _TTS_CACHE_BUCKET   the audio cache bucket name
+#   _APPLE_TEAM_ID      optional; empty disables Apple Music endpoint
+#   _APPLE_KEY_ID       optional; empty disables Apple Music endpoint
+
+substitutions:
+  _SERVICE_NAME: whats-control-plane
+  _REGION: us-central1
+  _TTS_CACHE_BUCKET: ""
+  _APPLE_TEAM_ID: ""
+  _APPLE_KEY_ID: ""
+
+steps:
+  # 1) Build the container image from control-plane/Dockerfile.
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag=us-central1-docker.pkg.dev/$PROJECT_ID/whats/control-plane:$SHORT_SHA
+      - --tag=us-central1-docker.pkg.dev/$PROJECT_ID/whats/control-plane:latest
+      - ./control-plane
+
+  # 2) Push to Artifact Registry.
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - --all-tags
+      - us-central1-docker.pkg.dev/$PROJECT_ID/whats/control-plane
+
+  # 3) Deploy to Cloud Run. Apple Music env vars are passed only when set;
+  #    OPENAI_API_KEY + the Apple .p8 file are mounted from Secret Manager.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+
+        SECRETS=( "--update-secrets=OPENAI_API_KEY=openai-api-key:latest" )
+        ENV_VARS=(
+          "TTS_CACHE_BUCKET=${_TTS_CACHE_BUCKET}"
+          "OPENAI_TTS_MODEL=gpt-4o-mini-tts"
+          "OPENAI_TTS_VOICE=nova"
+          "OPENAI_TRANSLATE_MODEL=gpt-4o-mini"
+          "OPENAI_TTS_FORMAT=mp3"
+        )
+
+        if [[ -n "${_APPLE_TEAM_ID}" && -n "${_APPLE_KEY_ID}" ]]; then
+          SECRETS+=( "--update-secrets=/secrets/apple-music.p8=apple-music-p8:latest" )
+          ENV_VARS+=(
+            "APPLE_TEAM_ID=${_APPLE_TEAM_ID}"
+            "APPLE_KEY_ID=${_APPLE_KEY_ID}"
+            "APPLE_MUSIC_PRIVATE_KEY_FILE=/secrets/apple-music.p8"
+          )
+        fi
+
+        ENV_JOINED=$(IFS=,; echo "$${ENV_VARS[*]}")
+
+        gcloud run deploy ${_SERVICE_NAME} \
+          --image=us-central1-docker.pkg.dev/$PROJECT_ID/whats/control-plane:$SHORT_SHA \
+          --region=${_REGION} \
+          --platform=managed \
+          --allow-unauthenticated \
+          --port=8080 \
+          --memory=256Mi \
+          --cpu=1 \
+          --min-instances=0 \
+          --max-instances=10 \
+          --concurrency=80 \
+          --timeout=60 \
+          --set-env-vars="$$ENV_JOINED" \
+          "$${SECRETS[@]}"
+
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/whats/control-plane:$SHORT_SHA
+  - us-central1-docker.pkg.dev/$PROJECT_ID/whats/control-plane:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY

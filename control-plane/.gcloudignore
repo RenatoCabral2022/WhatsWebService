@@ -1,0 +1,10 @@
+# Files not uploaded as part of `gcloud run deploy --source` builds.
+# Keep the upload small to speed cold-start deploys.
+
+.git
+.gitignore
+.gcloudignore
+*.md
+*_test.go
+secrets/
+node_modules/
